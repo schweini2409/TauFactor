@@ -1695,7 +1695,13 @@ function [hand]=Preparation2(hand)
 [a,b,c]=size(hand.Net_Perc);
 % Generate maps of nearest neighbours
 hand.Map=logical(padarray(hand.Net_Perc, [1,1,1],0));
+% Generate maps with neighbours that include solid phase
+hand.Net_t = ones(size(hand.Net_Perc));
+hand.Map_t=logical(padarray(hand.Net_t, [1,1,1],0));
+
 hand.Net_Perc=1;
+hand.Net_t = 1;
+
 % Calculate adjusted map of adjusted nearest neighbours
 if get(hand.Check_VaryD,'value')==0
     hand.NN_a=zeros(size(hand.Map),'double');
@@ -1703,6 +1709,14 @@ if get(hand.Check_VaryD,'value')==0
         hand.c_X*double((hand.Map(1:end-2,2:end-1,2:end-1)+hand.Map(3:end  ,2:end-1,2:end-1)))+...
         hand.c_Y*double((hand.Map(2:end-1,1:end-2,2:end-1)+hand.Map(2:end-1,3:end  ,2:end-1)))+...
         hand.c_Z*double((hand.Map(2:end-1,2:end-1,1:end-2)+hand.Map(2:end-1,2:end-1,3:end  )));
+        
+    %Calculate map with total nearest neighbours (solid phase + liquid phase)
+    hand.NN_tot=zeros(size(hand.Map_t),'double');
+    hand.NN_tot(2:end-1,2:end-1,2:end-1)=...
+        hand.c_X*double((hand.Map_t(1:end-2,2:end-1,2:end-1)+hand.Map_t(3:end  ,2:end-1,2:end-1)))+...
+        hand.c_Y*double((hand.Map_t(2:end-1,1:end-2,2:end-1)+hand.Map_t(2:end-1,3:end  ,2:end-1)))+...
+        hand.c_Z*double((hand.Map_t(2:end-1,2:end-1,1:end-2)+hand.Map_t(2:end-1,2:end-1,3:end)));
+    
     if hand.Blocked==1
         hand.NN_a(end-1,:,:)=double(hand.Map(end-1,:,:)).*(hand.NN_a(end-1,:,:)+(2*hand.c_X));
     else
@@ -1710,6 +1724,7 @@ if get(hand.Check_VaryD,'value')==0
     end
     if hand.Aniso==0
         hand.NN_a=hand.NN_a/hand.c_X;
+        hand.NN_tot=hand.NN_tot/hand.c_X; 
     end
     hand.Dmap=1;
     [hand]=MBytesRecord(hand,whos,'Preparation2 NN_A'); %Memory
@@ -1979,10 +1994,20 @@ if hand.Aniso==1
     hand.w=0.95*hand.w;
 end
 hand.omw=complex(1-hand.w);
-hand.NN_aV.w1=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
-    hand.D+complex(double(hand.NN_a(hand.Cheq1.P)))) ) );
-hand.NN_aV.w2=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
-    hand.D+complex(double(hand.NN_a(hand.Cheq2.P)))) ) );
+
+%hand.NN_aV.w1=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
+%    hand.D+complex(double(hand.NN_a(hand.Cheq1.P)))) ) );
+%hand.NN_aV.w2=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
+%    hand.D+complex(double(hand.NN_a(hand.Cheq2.P)))) ) );
+
+% Sym_Cell
+hand.NN_aV.sp1 = complex(((hand.NN_tot(hand.Cheq1.P)-hand.NN_a(hand.Cheq1.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
+hand.NN_aV.sp2 = complex(((hand.NN_tot(hand.Cheq2.P)-hand.NN_a(hand.Cheq2.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
+
+hand.NN_aV.w1=complex(hand.w./ (complex(hand.NN_aV.sp1+complex(double(hand.NN_a(hand.Cheq1.P))))));
+hand.NN_aV.w2=complex(hand.w./ (complex(hand.NN_aV.sp2+complex(double(hand.NN_a(hand.Cheq2.P))))));
+% End Sym_Cell
+
 
 [hand]=MBytesRecord(hand,whos,'Prep3Imp'); %Memory
 
@@ -2130,11 +2155,11 @@ if c>1 % if the volume is 3D
                 hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+hand.NN_aV.w1.*(...
                     hand.T2(hand.Cheq1.P_Xm)+hand.T2(hand.Cheq1.P_Xp)+...
                     hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp)+...
-                    hand.T2(hand.Cheq1.P_Zm)+hand.T2(hand.Cheq1.P_Zp));
+                    hand.T2(hand.Cheq1.P_Zm)+hand.T2(hand.Cheq1.P_Zp)+hand.NN_aV.sp1.*hand.phi1);
                 hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+hand.NN_aV.w2.*(...
                     hand.T1(hand.Cheq2.P_Xm)+hand.T1(hand.Cheq2.P_Xp)+...
                     hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp)+...
-                    hand.T1(hand.Cheq2.P_Zm)+hand.T1(hand.Cheq2.P_Zp));
+                    hand.T1(hand.Cheq2.P_Zm)+hand.T1(hand.Cheq2.P_Zp)+hand.NN_aV.sp2.*hand.phi1);
                 hand.iter=hand.iter+1;
                 if rem(hand.iter,hand.check_f)==0
                     [hand]=Checks(hand);
