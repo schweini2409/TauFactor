@@ -1521,14 +1521,19 @@ else
         eval(['[hand]=Iterate_',hand.mexCtrl,'(hand);'])
     else 
         hand.impCheck=0;
-        if sum(sum(hand.Map(2,2:end-1,2:end-1)))~=0 && hand.Blocked==0
-            eval(['[hand]=Iterate_',hand.mexCtrl,'(hand);'])
-            hand.Tau=mean([hand.TauFacBot(end),hand.TauFacTop(end)]);
-        else
-            hand.Results.Tau=inf;
-            hand.Tau=1;
-            hand.Tconv=single(hand.Map);
-        end
+%         if sum(sum(hand.Map(2,2:end-1,2:end-1)))~=0 && hand.Blocked==0
+%             eval(['[hand]=Iterate_',hand.mexCtrl,'(hand);'])
+%             hand.Tau=mean([hand.TauFacBot(end),hand.TauFacTop(end)]);
+%         else
+%             hand.Results.Tau=inf;
+%             hand.Tau=1;
+%             hand.Tconv=single(hand.Map);
+%         end
+
+        hand.Results.Tau=inf;
+        hand.Tau=1;
+        hand.Tconv=single(hand.Map);
+        
         hand.impCheck=1;
         hand.D=complex(1);
         hand.delta_x=complex(hand.L_X);
@@ -1852,11 +1857,12 @@ Ler = find(Map_lpr(:,:,:)==1); % Liquid phase of right electrode
 [Cheq2_Lel]=(ismember(hand.Cheq2.P,Lel)); 
 [Cheq2_Ler]=(ismember(hand.Cheq2.P,Ler)); 
 
-hand.Cheq1.P(Cheq1_Lel) = uint32(length(hand.Cheq2.P)+1);
-hand.Cheq1.P(Cheq1_Ler) = uint32(length(hand.Cheq2.P)+2);
+hand.Cheq1.Pb(Cheq1_Lel) = uint32(length(hand.Cheq2.P)+1);
+hand.Cheq1.Pb(Cheq1_Ler) = uint32(length(hand.Cheq2.P)+2);
 
-hand.Cheq2.P(Cheq2_Lel) = uint32(length(hand.Cheq1.P)+1);
-hand.Cheq2.P(Cheq2_Ler) = uint32(length(hand.Cheq1.P)+2);
+hand.Cheq2.Pb(Cheq2_Lel) = uint32(length(hand.Cheq1.P)+1);
+hand.Cheq2.Pb(Cheq2_Ler) = uint32(length(hand.Cheq1.P)+2);
+
 
 % End new
 
@@ -1913,7 +1919,11 @@ if c>1
     hand.Cheq1.P_Zp=uint32(hand.Cheq1.P_Zp);
     hand.Cheq1.P_Zp(hand.Cheq1.P_Zp==0)=length(hand.Cheq2.P)+1;
 end
+
 % hand.Cheq1.P_Xp(LIA1b)=uint32(length(hand.Cheq2.P)+2);
+
+
+
 
 function [hand]=Preparation3(hand)
 %% Third preparation step for Tau calculation where the volume is initialised as linear
@@ -1933,6 +1943,7 @@ hand.omw=double(1-hand.w);
 % factor and division
 hand.NN_aV.w1=double(hand.w./double(hand.NN_a(hand.Cheq1.P)));
 hand.NN_aV.w2=double(hand.w./double(hand.NN_a(hand.Cheq2.P)));
+
 
 [hand]=MBytesRecord(hand,whos,'Prep3'); %Memory
 if get(hand.Check_Impedance,'Value')==0
@@ -2039,6 +2050,8 @@ hand.omw=complex(1-hand.w);
 
 
 % New
+hand.C_dl = 0.36 ; % C double layer
+hand.k = 4 ;  % kappa
 
 hand.NN_aV.sp1 = complex(((hand.NN_tot(hand.Cheq1.P)-hand.NN_a(hand.Cheq1.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
 hand.NN_aV.sp2 = complex(((hand.NN_tot(hand.Cheq2.P)-hand.NN_a(hand.Cheq2.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
@@ -2194,11 +2207,11 @@ if c>1 % if the volume is 3D
                 hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+hand.NN_aV.w1.*(...
                     hand.T2(hand.Cheq1.P_Xm)+hand.T2(hand.Cheq1.P_Xp)+...
                     hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp)+...
-                    hand.T2(hand.Cheq1.P_Zm)+hand.T2(hand.Cheq1.P_Zp));
+                    hand.T2(hand.Cheq1.P_Zm)+hand.T2(hand.Cheq1.P_Zp)+hand.NN_aV.sp1.*(hand.T2(hand.Cheq1.Pb)));
                 hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+hand.NN_aV.w2.*(...
                     hand.T1(hand.Cheq2.P_Xm)+hand.T1(hand.Cheq2.P_Xp)+...
                     hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp)+...
-                    hand.T1(hand.Cheq2.P_Zm)+hand.T1(hand.Cheq2.P_Zp));
+                    hand.T1(hand.Cheq2.P_Zm)+hand.T1(hand.Cheq2.P_Zp)+hand.NN_aV.sp2.*(hand.T1(hand.Cheq2.Pb)));
                 hand.iter=hand.iter+1;
                 if rem(hand.iter,hand.check_f)==0
                     [hand]=Checks(hand);
@@ -2249,10 +2262,10 @@ else %% 2D version
             while hand.whileFlag>0 && hand.iter<hand.iter_max
                 hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+hand.NN_aV.w1.*(...
                     hand.T2(hand.Cheq1.P_Xm)+hand.T2(hand.Cheq1.P_Xp)+...
-                    hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp)+hand.NN_aV.sp1.*(hand.T2(hand.Cheq1.P)));
+                    hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp)+hand.NN_aV.sp1.*(hand.T2(hand.Cheq1.Pb)));
                 hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+hand.NN_aV.w2.*(...
                     hand.T1(hand.Cheq2.P_Xm)+hand.T1(hand.Cheq2.P_Xp)+...
-                    hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp)+hand.NN_aV.sp2.*(hand.T1(hand.Cheq2.P)));
+                    hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp)+hand.NN_aV.sp2.*(hand.T1(hand.Cheq2.Pb)));
                 hand.iter=hand.iter+1;
                 if rem(hand.iter,hand.check_f)==0
                     [hand]=Checks(hand);
