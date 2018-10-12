@@ -642,7 +642,7 @@ ExpectedTime(hObject, eventdata, hand);
 function Check_W3_Callback(hObject, eventdata, hand)
 ExpectedTime(hObject, eventdata, hand);
 function Check_B1_Callback(hObject, eventdata, hand)
-ExpectedTime(hObject, eventdata, hand);
+ExpectedTime(hObject, eventdata, hand);c
 function Check_B2_Callback(hObject, eventdata, hand)
 ExpectedTime(hObject, eventdata, hand);
 function Check_B3_Callback(hObject, eventdata, hand)
@@ -1519,7 +1519,7 @@ else
     [hand]=Preparation3(hand);
     if get(hand.Check_Impedance, 'Value')==0
         eval(['[hand]=Iterate_',hand.mexCtrl,'(hand);'])
-    else
+    else 
         hand.impCheck=0;
         if sum(sum(hand.Map(2,2:end-1,2:end-1)))~=0 && hand.Blocked==0
             eval(['[hand]=Iterate_',hand.mexCtrl,'(hand);'])
@@ -1695,12 +1695,21 @@ function [hand]=Preparation2(hand)
 [a,b,c]=size(hand.Net_Perc);
 % Generate maps of nearest neighbours
 hand.Map=logical(padarray(hand.Net_Perc, [1,1,1],0));
-% Generate maps with neighbours that include solid phase
+%New
+% hand.Net_sp = 1 - hand.Net_Perc ;
 hand.Net_t = ones(size(hand.Net_Perc));
 hand.Map_t=logical(padarray(hand.Net_t, [1,1,1],0));
 
+% hand.Map_sp=logical(padarray(hand.Net_Perc, [1,1,1],1));
+
+% Map_spl = logical(padarray(hand.Net_t, [1,1,1],1));
+% Map_spr = logical(padarray(hand.Net_t, [1,1,1],1));
+Map_lpl = logical(padarray(zeros([a,b,c]), [1,1,1],0));
+Map_lpr = logical(padarray(zeros([a,b,c]), [1,1,1],0));
+
+%End new
 hand.Net_Perc=1;
-hand.Net_t = 1;
+hand.Net_t=1;
 
 % Calculate adjusted map of adjusted nearest neighbours
 if get(hand.Check_VaryD,'value')==0
@@ -1709,22 +1718,25 @@ if get(hand.Check_VaryD,'value')==0
         hand.c_X*double((hand.Map(1:end-2,2:end-1,2:end-1)+hand.Map(3:end  ,2:end-1,2:end-1)))+...
         hand.c_Y*double((hand.Map(2:end-1,1:end-2,2:end-1)+hand.Map(2:end-1,3:end  ,2:end-1)))+...
         hand.c_Z*double((hand.Map(2:end-1,2:end-1,1:end-2)+hand.Map(2:end-1,2:end-1,3:end  )));
-        
-    %Calculate map with total nearest neighbours (solid phase + liquid phase)
+    %New
     hand.NN_tot=zeros(size(hand.Map_t),'double');
     hand.NN_tot(2:end-1,2:end-1,2:end-1)=...
         hand.c_X*double((hand.Map_t(1:end-2,2:end-1,2:end-1)+hand.Map_t(3:end  ,2:end-1,2:end-1)))+...
         hand.c_Y*double((hand.Map_t(2:end-1,1:end-2,2:end-1)+hand.Map_t(2:end-1,3:end  ,2:end-1)))+...
         hand.c_Z*double((hand.Map_t(2:end-1,2:end-1,1:end-2)+hand.Map_t(2:end-1,2:end-1,3:end)));
+    %End new
     
     if hand.Blocked==1
         hand.NN_a(end-1,:,:)=double(hand.Map(end-1,:,:)).*(hand.NN_a(end-1,:,:)+(2*hand.c_X));
     else
         hand.NN_a([2 end-1],:,:)=double(hand.Map([2 end-1],:,:)).*(hand.NN_a([2 end-1],:,:)+(2*hand.c_X));
     end
+    
     if hand.Aniso==0
         hand.NN_a=hand.NN_a/hand.c_X;
+        % New
         hand.NN_tot=hand.NN_tot/hand.c_X; 
+        % End new
     end
     hand.Dmap=1;
     [hand]=MBytesRecord(hand,whos,'Preparation2 NN_A'); %Memory
@@ -1788,7 +1800,8 @@ end
 % Find checkboard neighbours
 % N=North, S=South, E=East, W=West, U=Up, D=down
 hand.Cheq2.P=1-hand.Cheq1.P;
-hand.Cheq1.P=padarray(hand.Cheq1.P>0,[1,1,1]);hand.Cheq1.P(hand.Map==0)=0;
+hand.Cheq1.P=padarray(hand.Cheq1.P>0,[1,1,1]);
+hand.Cheq1.P(hand.Map==0)=0;
 hand.Cheq1.P=uint32(find(hand.Cheq1.P));
 hand.Cheq1.P_Xm=hand.Cheq1.P-1;
 hand.Cheq1.P_Xp=hand.Cheq1.P+1;
@@ -1824,6 +1837,29 @@ end
 [hand]=MBytesRecord(hand,whos,'Prep2 Cheq end'); %Memory
 %%
 % New method
+% New
+
+Map_lpl(1:end/2,:,:) = hand.Map(1:end/2,:,:);  % Left electrode
+Map_lpr(end/2:end,:,:) = hand.Map(end/2:end,:,:); % Right electrode
+
+
+Lel = find(Map_lpl(:,:,:)==1); % Liquid phase of left electrode
+Ler = find(Map_lpr(:,:,:)==1); % Liquid phase of right electrode
+
+[Cheq1_Lel]=(ismember(hand.Cheq1.P,Lel)); 
+[Cheq1_Ler]=(ismember(hand.Cheq1.P,Ler)); 
+
+[Cheq2_Lel]=(ismember(hand.Cheq2.P,Lel)); 
+[Cheq2_Ler]=(ismember(hand.Cheq2.P,Ler)); 
+
+hand.Cheq1.P(Cheq1_Lel) = uint32(length(hand.Cheq2.P)+1);
+hand.Cheq1.P(Cheq1_Ler) = uint32(length(hand.Cheq2.P)+2);
+
+hand.Cheq2.P(Cheq2_Lel) = uint32(length(hand.Cheq1.P)+1);
+hand.Cheq2.P(Cheq2_Ler) = uint32(length(hand.Cheq1.P)+2);
+
+% End new
+
 Top=uint32([1:a+2:(a+2)*(b+2)*(c+2)]);
 Base=uint32([a+2:a+2:(a+2)*(b+2)*(c+2)]);
 
@@ -1851,7 +1887,7 @@ if c>1
     hand.Cheq2.P_Zp=uint32(hand.Cheq2.P_Zp);
     hand.Cheq2.P_Zp(hand.Cheq2.P_Zp==0)=length(hand.Cheq1.P)+1;
 end
-hand.Cheq2.P_Xp(LIA2b)=uint32(length(hand.Cheq1.P)+2);
+% hand.Cheq2.P_Xp(LIA2b)=uint32(length(hand.Cheq1.P)+2);
 
 [LIA1t]=ismember(hand.Cheq1.P_Xm,Top);
 [LIA1b]=ismember(hand.Cheq1.P_Xp,Base);
@@ -1877,7 +1913,7 @@ if c>1
     hand.Cheq1.P_Zp=uint32(hand.Cheq1.P_Zp);
     hand.Cheq1.P_Zp(hand.Cheq1.P_Zp==0)=length(hand.Cheq2.P)+1;
 end
-hand.Cheq1.P_Xp(LIA1b)=uint32(length(hand.Cheq2.P)+2);
+% hand.Cheq1.P_Xp(LIA1b)=uint32(length(hand.Cheq2.P)+2);
 
 function [hand]=Preparation3(hand)
 %% Third preparation step for Tau calculation where the volume is initialised as linear
@@ -1892,11 +1928,12 @@ if get(hand.Check_VaryD,'value')==1
 end
 % hand.w=1.967;
 % hand.w=1;
-hand.omw=double(1-hand.w);
+hand.omw=double(1-hand.w);      
 % Seperate nearest neighbours into checkerboard and precalculate relaxation
 % factor and division
 hand.NN_aV.w1=double(hand.w./double(hand.NN_a(hand.Cheq1.P)));
 hand.NN_aV.w2=double(hand.w./double(hand.NN_a(hand.Cheq2.P)));
+
 [hand]=MBytesRecord(hand,whos,'Prep3'); %Memory
 if get(hand.Check_Impedance,'Value')==0
     hand.NN_a=0;hand=rmfield(hand,'NN_a');
@@ -1995,19 +2032,21 @@ if hand.Aniso==1
 end
 hand.omw=complex(1-hand.w);
 
-%hand.NN_aV.w1=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
-%    hand.D+complex(double(hand.NN_a(hand.Cheq1.P)))) ) );
-%hand.NN_aV.w2=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
-%    hand.D+complex(double(hand.NN_a(hand.Cheq2.P)))) ) );
+% hand.NN_aV.w1=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
+%     hand.D+complex(double(hand.NN_a(hand.Cheq1.P)))) ) );
+% hand.NN_aV.w2=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
+%     hand.D+complex(double(hand.NN_a(hand.Cheq2.P)))) ) );
 
-% Sym_Cell
+
+% New
+
 hand.NN_aV.sp1 = complex(((hand.NN_tot(hand.Cheq1.P)-hand.NN_a(hand.Cheq1.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
 hand.NN_aV.sp2 = complex(((hand.NN_tot(hand.Cheq2.P)-hand.NN_a(hand.Cheq2.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
 
 hand.NN_aV.w1=complex(hand.w./ (complex(hand.NN_aV.sp1+complex(double(hand.NN_a(hand.Cheq1.P))))));
 hand.NN_aV.w2=complex(hand.w./ (complex(hand.NN_aV.sp2+complex(double(hand.NN_a(hand.Cheq2.P))))));
-% End Sym_Cell
 
+% End new
 
 [hand]=MBytesRecord(hand,whos,'Prep3Imp'); %Memory
 
@@ -2155,11 +2194,11 @@ if c>1 % if the volume is 3D
                 hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+hand.NN_aV.w1.*(...
                     hand.T2(hand.Cheq1.P_Xm)+hand.T2(hand.Cheq1.P_Xp)+...
                     hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp)+...
-                    hand.T2(hand.Cheq1.P_Zm)+hand.T2(hand.Cheq1.P_Zp)+hand.NN_aV.sp1.*hand.phi1);
+                    hand.T2(hand.Cheq1.P_Zm)+hand.T2(hand.Cheq1.P_Zp));
                 hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+hand.NN_aV.w2.*(...
                     hand.T1(hand.Cheq2.P_Xm)+hand.T1(hand.Cheq2.P_Xp)+...
                     hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp)+...
-                    hand.T1(hand.Cheq2.P_Zm)+hand.T1(hand.Cheq2.P_Zp)+hand.NN_aV.sp2.*hand.phi1);
+                    hand.T1(hand.Cheq2.P_Zm)+hand.T1(hand.Cheq2.P_Zp));
                 hand.iter=hand.iter+1;
                 if rem(hand.iter,hand.check_f)==0
                     [hand]=Checks(hand);
@@ -2210,10 +2249,10 @@ else %% 2D version
             while hand.whileFlag>0 && hand.iter<hand.iter_max
                 hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+hand.NN_aV.w1.*(...
                     hand.T2(hand.Cheq1.P_Xm)+hand.T2(hand.Cheq1.P_Xp)+...
-                    hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp));
+                    hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp)+hand.NN_aV.sp1.*(hand.T2(hand.Cheq1.P)));
                 hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+hand.NN_aV.w2.*(...
                     hand.T1(hand.Cheq2.P_Xm)+hand.T1(hand.Cheq2.P_Xp)+...
-                    hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp));
+                    hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp)+hand.NN_aV.sp2.*(hand.T1(hand.Cheq2.P)));
                 hand.iter=hand.iter+1;
                 if rem(hand.iter,hand.check_f)==0
                     [hand]=Checks(hand);
