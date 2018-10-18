@@ -1549,9 +1549,9 @@ else
         %             freqChar=hand.D/(a*hand.TauFacBot(end)*hand.delta_x)^2;
         %         end
         if sum(sum(hand.Map(2,2:end-1,2:end-1)))~=0 && hand.Blocked==0
-            hand.y=-4:0.1:11;%-4:0.5:11;%-2:0.5:10
+            hand.y=4:0.1:11;%-4:0.5:11;%-2:0.5:10
         else
-            hand.y=-2:0.1:11;%-4:0.5:11;%-2:0.5:10
+            hand.y=4:0.1:11;%-4:0.5:11;%-2:0.5:10
         end
         tic
         hand.impFig=figure(...
@@ -1712,6 +1712,8 @@ hand.Map_t=logical(padarray(hand.Net_t, [1,1,1],0));
 Map_lpl = logical(padarray(zeros([a,b,c]), [1,1,1],0));
 Map_lpr = logical(padarray(zeros([a,b,c]), [1,1,1],0));
 
+Map_sep = logical(padarray(zeros([a,b,c]), [1,1,1],0));
+
 %End new
 hand.Net_Perc=1;
 hand.Net_t=1;
@@ -1845,11 +1847,16 @@ end
 % New
 
 Map_lpl(1:end/2,:,:) = hand.Map(1:end/2,:,:);  % Left electrode
-Map_lpr(end/2:end,:,:) = hand.Map(end/2:end,:,:); % Right electrode
+Map_lpr(end/2+1:end,:,:) = hand.Map(end/2+1:end,:,:); % Right electrode
 
+Map_sep(end/2,:,:) =  hand.Map(end/2,:,:);  % Left electrode
 
 Lel = find(Map_lpl(:,:,:)==1); % Liquid phase of left electrode
 Ler = find(Map_lpr(:,:,:)==1); % Liquid phase of right electrode
+Sep = find(Map_sep(:,:,:)==1);
+
+[hand.Cheq1.Sep]=(ismember(hand.Cheq1.P,Sep)); 
+[hand.Cheq2.Sep]=(ismember(hand.Cheq2.P,Sep)); 
 
 [Cheq1_Lel]=(ismember(hand.Cheq1.P,Lel)); 
 [Cheq1_Ler]=(ismember(hand.Cheq1.P,Ler)); 
@@ -2050,8 +2057,8 @@ hand.omw=complex(1-hand.w);
 
 
 % New
-hand.C_dl = 0.36 ; % C double layer
-hand.k = 4 ;  % kappa
+hand.C_dl = 0.036 ; % C double layer
+hand.k = 0.048 ;  % kappa
 
 hand.NN_aV.sp1 = complex(((hand.NN_tot(hand.Cheq1.P)-hand.NN_a(hand.Cheq1.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
 hand.NN_aV.sp2 = complex(((hand.NN_tot(hand.Cheq2.P)-hand.NN_a(hand.Cheq2.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
@@ -2371,9 +2378,13 @@ if hand.impCheck~=1
         %         end
     end
 else % Impedance mode
+    hand.I = -hand.k.*(sum((hand.T1(hand.Cheq1.Sep)-hand.T2(hand.Cheq1.P_Xp(hand.Cheq1.Sep)))+(hand.T2(hand.Cheq2.Sep)-hand.T1(hand.Cheq2.P_Xp(hand.Cheq2.Sep)))))/(hand.delta_x);
     TauRat=(hand.L_Y*hand.L_Z)/hand.L_X;
-    hand.ImpedanceTop(hand.freqNo,checkNo)=-(0.5/(TauRat*(hand.Area_top*hand.TopStim-sumT_top)/(1/hand.D)));
-    hand.ImpedanceBot(hand.freqNo,checkNo)= (0.5/(TauRat*(hand.Area_bot*hand.BotStim-sumT_bot)/(1/hand.D)));
+%     hand.ImpedanceTop(hand.freqNo,checkNo)=-(0.5/(TauRat*(hand.Area_top*hand.TopStim-sumT_top)/(1/hand.D)));
+%     hand.ImpedanceBot(hand.freqNo,checkNo)= (0.5/(TauRat*(hand.Area_bot*hand.BotStim-sumT_bot)/(1/hand.D)));
+    
+    hand.ImpedanceBot(hand.freqNo,checkNo)= (2*hand.BotStim-hand.TopStim)./(hand.I);
+
     if checkNo<6
         hand.whileFlag=hand.conDwell-1;
     else
@@ -2388,7 +2399,7 @@ else % Impedance mode
             %                abs(real(hand.ImpedanceTop(hand.freqNo,checkNo))/real(hand.ImpedanceTop(hand.freqNo,checkNo-6))-1)<hand.conTol &&...
             %                abs(imag(hand.ImpedanceTop(hand.freqNo,checkNo))/imag(hand.ImpedanceTop(hand.freqNo,checkNo-6))-1)<hand.conTol
             hand.ImpedanceBotConv(hand.freqNo)=hand.ImpedanceBot(hand.freqNo,checkNo);
-            hand.ImpedanceTopConv(hand.freqNo)=hand.ImpedanceTop(hand.freqNo,checkNo);
+%             hand.ImpedanceTopConv(hand.freqNo)=hand.ImpedanceTop(hand.freqNo,checkNo);
             hand.whileFlag=hand.whileFlag-1;
             
         else
@@ -2398,7 +2409,7 @@ else % Impedance mode
         end
         if hand.iter>=hand.iter_max-hand.check_f
             hand.ImpedanceBotConv(hand.freqNo)=hand.ImpedanceBot(hand.freqNo,checkNo);
-            hand.ImpedanceTopConv(hand.freqNo)=hand.ImpedanceTop(hand.freqNo,checkNo);
+%             hand.ImpedanceTopConv(hand.freqNo)=hand.ImpedanceTop(hand.freqNo,checkNo);
             Error=1;
             hand.ConvErr=hand.ConvErr+1;
             hand.iter_max=hand.iter_max*1.5;
