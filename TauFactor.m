@@ -1549,9 +1549,9 @@ else
         %             freqChar=hand.D/(a*hand.TauFacBot(end)*hand.delta_x)^2;
         %         end
         if sum(sum(hand.Map(2,2:end-1,2:end-1)))~=0 && hand.Blocked==0
-            hand.y=4:0.1:11;%-4:0.5:11;%-2:0.5:10
+            hand.y=12:0.1:16;%-4:0.5:11;%-2:0.5:10
         else
-            hand.y=4:0.1:11;%-4:0.5:11;%-2:0.5:10
+            hand.y=12:0.1:16;%-4:0.5:11;%-2:0.5:10
         end
         tic
         hand.impFig=figure(...
@@ -1560,12 +1560,13 @@ else
             'position',[277 35 99 40],...
             'renderer','painters',...
             'Color',[1 1 1]);
-        hand.freqSet=complex(hand.freqChar*2.^hand.y);
+%         hand.freqSet=complex(hand.freqChar*2.^hand.y);
+        hand.freqSet=complex(10.^hand.y);
         hand.ImpedanceBotConv=ones(length(hand.y),1)*nan;
         for freqNo=1:length(hand.y)
             %             hand.y(freqNo)
             hand.freqNo=freqNo;
-            hand.freqSet=complex(hand.freqChar*2.^hand.y);
+            hand.freqSet=complex(10.^hand.y);
             hand.freq=complex(hand.freqSet(freqNo));
             if hand.Check_FreqPlots==1
                 [hand]=InitiatePlot1(hand);
@@ -1733,11 +1734,11 @@ if get(hand.Check_VaryD,'value')==0
         hand.c_Z*double((hand.Map_t(2:end-1,2:end-1,1:end-2)+hand.Map_t(2:end-1,2:end-1,3:end)));
     %End new
     
-    if hand.Blocked==1
-        hand.NN_a(end-1,:,:)=double(hand.Map(end-1,:,:)).*(hand.NN_a(end-1,:,:)+(2*hand.c_X));
-    else
-        hand.NN_a([2 end-1],:,:)=double(hand.Map([2 end-1],:,:)).*(hand.NN_a([2 end-1],:,:)+(2*hand.c_X));
-    end
+%     if hand.Blocked==1
+%         hand.NN_a(end-1,:,:)=double(hand.Map(end-1,:,:)).*(hand.NN_a(end-1,:,:)+(2*hand.c_X));
+%     else
+%         hand.NN_a([2 end-1],:,:)=double(hand.Map([2 end-1],:,:)).*(hand.NN_a([2 end-1],:,:)+(2*hand.c_X));
+%     end
     
     if hand.Aniso==0
         hand.NN_a=hand.NN_a/hand.c_X;
@@ -2057,11 +2058,11 @@ hand.omw=complex(1-hand.w);
 
 
 % New
-hand.C_dl = 0.036 ; % C double layer
+hand.C_dl = 1 ; % C double layer
 hand.k = 0.048 ;  % kappa
 
-hand.NN_aV.sp1 = complex(((hand.NN_tot(hand.Cheq1.P)-hand.NN_a(hand.Cheq1.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
-hand.NN_aV.sp2 = complex(((hand.NN_tot(hand.Cheq2.P)-hand.NN_a(hand.Cheq2.P))*1i*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
+hand.NN_aV.sp1 = complex(((hand.NN_tot(hand.Cheq1.P)-hand.NN_a(hand.Cheq1.P))*1i*2*pi*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
+hand.NN_aV.sp2 = complex(((hand.NN_tot(hand.Cheq2.P)-hand.NN_a(hand.Cheq2.P))*1i*2*pi*hand.freq*hand.C_dl*hand.delta_x^2)/hand.k) ;
 
 hand.NN_aV.w1=complex(hand.w./ (complex(hand.NN_aV.sp1+complex(double(hand.NN_a(hand.Cheq1.P))))));
 hand.NN_aV.w2=complex(hand.w./ (complex(hand.NN_aV.sp2+complex(double(hand.NN_a(hand.Cheq2.P))))));
