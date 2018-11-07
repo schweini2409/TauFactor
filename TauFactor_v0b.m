@@ -1572,7 +1572,9 @@ if get(hand.Check_Reverse, 'Value')==1 && hand.impCheck==1
 end
 
 [hand]=Percolation(hand);
-hand.Net_Perc=logical(hand.Net_Perc);
+% hand.Net_Perc=logical(hand.Net_Perc);
+hand.Net_Perc=logical(hand.Net);
+
 [a,b,c]=size(hand.Net_Perc);
 hand.VolFrac_Perc=sum(hand.Net_Perc(:))/sum(hand.Net(:));
 if sum(sum(hand.Net_Perc(end,:,:)))==0 && get(hand.Check_TauMode, 'Value')~=3
@@ -1586,8 +1588,15 @@ if sum(sum(hand.Net_Perc(end,:,:)))==0 && get(hand.Check_TauMode, 'Value')~=3
 else
     hand.impCheck=0;
     [hand]=Preparation1(hand);
-    [hand]=Preparation2(hand);
-    [hand]=Preparation3(hand);
+    
+    if get(hand.Check_TauMode, 'Value')~=3
+        [hand]=Preparation2(hand);
+        [hand]=Preparation3(hand);
+    else
+        [hand]=Preparation2bis(hand);
+        [hand]=Preparation3bis(hand);
+    end
+    
     switch get(hand.Check_TauMode, 'Value')
         case 1
             eval(['[hand]=Iterate_',hand.mexCtrl,'(hand);'])
@@ -1664,11 +1673,72 @@ else
             end
             [hand]=Saving(hand);
         case 3 %Symmetrical
-            hand.capacitance=str2num(get(hand.edit_capacitance,'string'));
-            hand.conductivity=str2num(get(hand.edit_conductivity,'string'));
-            keyboard %Preperation3 needs writing
-            [hand]=Iterate_mat(hand);
-            % eval(['[hand]=Iterate_',hand.mexCtrl,'(hand);'])
+            hand.Cdl=str2double(get(hand.edit_capacitance,'string'));
+            hand.kappa=str2double(get(hand.edit_conductivity,'string'));         
+            
+            hand.impCheck=1;
+            hand.Blocked=1 ; % ???
+            
+            hand.delta_x=complex(hand.L_X);
+            
+            hand.Results.Tau=inf;
+            hand.Tau=1;
+            hand.Tconv=single(hand.Map);
+
+%             if hand.PercFlag==1
+%                 hand.freqChar=hand.D/(a*hand.delta_x)^2;%Hz?
+%             else
+%                 hand.freqChar=hand.D/(hand.Max_Path*hand.delta_x)^2;
+%             end
+            
+            hand.y=6:-0.1:-2; % freq range
+            tic
+            hand.impFig=figure(...
+                'Name',['TF_Impedance: ','p',hand.Pha(1),'d',num2str(hand.Dir),'_',hand.fil],...
+                'units','characters',...
+                'position',[277 35 99 40],...
+                'renderer','painters',...
+                'Color',[1 1 1]);
+%             hand.freqSet=complex(hand.freqChar*2.^hand.y);
+            
+            hand.freqSet=complex(10.^hand.y);  
+            hand.ImpedanceBotConv=ones(length(hand.y),1)*nan;
+            
+            for freqNo=1:length(hand.y)
+%                 hand.y(freqNo)
+                hand.freqNo=freqNo;
+%                 hand.freqSet=complex(hand.freqChar*2.^hand.y);
+                hand.freqSet=complex(10.^hand.y);
+                hand.freq=complex(hand.freqSet(freqNo)); %times 2pi? Tu : no because already times for NN_w1
+                if hand.Check_FreqPlots==1
+                    try
+                        [hand]=InitiatePlot1(hand);
+                    end
+                end
+                [hand]=Preparation3imp_sym(hand);
+                if hand.Check_FreqPlots==1
+                    [hand]=InitiatePlot2(hand,(hand.Tconv(:,:,2)),hand.Map);
+                end
+                
+                [hand]=Iterate_sym_mat(hand); % Iterations
+
+                try
+                    [hand]=ImpPlot(hand);
+                end
+                if (abs(imag(hand.ImpedanceBotConv(freqNo))/max(real(hand.ImpedanceBotConv(:))))<5*hand.conTol &&...
+                        abs(real(hand.ImpedanceBotConv(freqNo))/max(real(hand.ImpedanceBotConv(:))))<5*hand.conTol)...
+                        || hand.ConvErr==2
+                    hand.ImpedanceBotConv=1; hand.ImpedanceBot=1;
+                    hand.TauFacBot=1; 
+                    hand.freqSet=1;
+                    hand.ConvErr=0;
+                    % sound(1,1000);pause(0.02);sound(1,1000);
+                    hand.Results.SimTime=hand.Results.SimTime+toc;
+                    [hand]=Saving(hand);
+                    return
+                end
+            end
+            [hand]=Saving(hand);
     end
     hand=rmfield(hand,'NN_aV');
     if isfield(hand,'R')
@@ -1740,9 +1810,9 @@ if get(hand.Check_TauMode, 'Value')~=3
 else
     if strcmp(get(hand.Edit_D_Black,'String'),'Elyt')
         OrPhaseOfInterest=0;
-    elseif strcmp(get(hand.Edit_D_Green,'String'),'Elyt')
-        OrPhaseOfInterest=1;
     elseif strcmp(get(hand.Edit_D_White,'String'),'Elyt')
+        OrPhaseOfInterest=1;
+    elseif strcmp(get(hand.Edit_D_Green,'String'),'Elyt')
         OrPhaseOfInterest=2;
     else
         disp('Choose an electrolyte phase')
@@ -1975,6 +2045,178 @@ if c>1
 end
 eval(['hand.Cheq1.P_Xp(LIA1b)=',hand.AddClass,'(length(hand.Cheq2.P)+2);']);
 
+function [hand]=Preparation2bis(hand)
+[a,b,c]=size(hand.Net_Perc);
+
+hand.Map=logical(padarray(hand.Net_Perc, [1,1,1],0));
+
+hand.Net_t = ones(size(hand.Net_Perc));
+hand.Map_t=logical(padarray(hand.Net_t, [1,1,1],0));
+
+hand.Net_t=1;
+hand.Net_Perc=1;
+
+% Calculate adjusted map of adjusted nearest neighbours
+hand.NN_a=zeros(size(hand.Map),'double');
+hand.NN_a(2:end-1,2:end-1,2:end-1)=...
+    hand.c_X*double((hand.Map(1:end-2,2:end-1,2:end-1)+hand.Map(3:end  ,2:end-1,2:end-1)))+...
+    hand.c_Y*double((hand.Map(2:end-1,1:end-2,2:end-1)+hand.Map(2:end-1,3:end  ,2:end-1)))+...
+    hand.c_Z*double((hand.Map(2:end-1,2:end-1,1:end-2)+hand.Map(2:end-1,2:end-1,3:end  )));
+
+hand.Dmap=1;
+
+hand.NN_tot=zeros(size(hand.Map_t),'double');
+hand.NN_tot(2:end-1,2:end-1,2:end-1)=...
+    hand.c_X*double((hand.Map_t(1:end-2,2:end-1,2:end-1)+hand.Map_t(3:end  ,2:end-1,2:end-1)))+...
+    hand.c_Y*double((hand.Map_t(2:end-1,1:end-2,2:end-1)+hand.Map_t(2:end-1,3:end  ,2:end-1)))+...
+    hand.c_Z*double((hand.Map_t(2:end-1,2:end-1,1:end-2)+hand.Map_t(2:end-1,2:end-1,3:end)));
+
+if hand.Aniso==0
+    hand.NN_a=hand.NN_a/hand.c_X; % nearest neighbours without adjust
+    hand.NN_tot=hand.NN_tot/hand.c_X;  % total nearest neighbours
+end
+
+[hand]=MBytesRecord(hand,whos,'Preparation2bis NN and NN_tot'); %Memory
+
+Map_lpl = logical(padarray(zeros([a,b,c]), [1,1,1],0));
+Map_lpr = logical(padarray(zeros([a,b,c]), [1,1,1],0));
+Map_sep = logical(padarray(zeros([a,b,c]), [1,1,1],0));
+
+hand.Cheq1.P=zeros([a,b,c],'uint8');
+
+% Build checkerboard
+hand.Cheq1.P(1:2:end)=1;
+if rem(a,2)==0
+    hand.Cheq1.P(:,2:2:end,:)=1-hand.Cheq1.P(:,2:2:end,:);
+end
+if rem(a*b,2)==0
+    hand.Cheq1.P(:,:,2:2:end)=1-hand.Cheq1.P(:,:,2:2:end);
+end
+% Find checkboard neighbours
+% N=North, S=South, E=East, W=West, U=Up, D=down
+hand.Cheq2.P=1-hand.Cheq1.P;
+hand.Cheq1.P=padarray(hand.Cheq1.P>0,[1,1,1]);
+hand.Cheq1.P(hand.Map==0)=0;
+hand.Cheq1.P=uint32(find(hand.Cheq1.P));
+hand.Cheq1.P_Xm=hand.Cheq1.P-1;
+hand.Cheq1.P_Xp=hand.Cheq1.P+1;
+hand.Cheq1.P_Ym=hand.Cheq1.P-(a+2);
+hand.Cheq1.P_Yp=hand.Cheq1.P+(a+2);
+if c>1
+    hand.Cheq1.P_Zm=hand.Cheq1.P-(a+2)*(b+2);
+    hand.Cheq1.P_Zp=hand.Cheq1.P+(a+2)*(b+2);
+else
+    hand.Cheq1.P_Zm=uint32(1);
+    hand.Cheq1.P_Zp=uint32(1);
+end
+[hand]=MBytesRecord(hand,whos,'Prep2bis Cheq'); %Memory
+
+hand.Cheq2.P=padarray(hand.Cheq2.P>0,[1,1,1]);hand.Cheq2.P(hand.Map==0)=0;
+hand.Cheq2.P=uint32(find(hand.Cheq2.P));
+hand.Cheq2.P_Xm=hand.Cheq2.P-1;
+hand.Cheq2.P_Xp=hand.Cheq2.P+1;
+hand.Cheq2.P_Ym=hand.Cheq2.P-(a+2);
+hand.Cheq2.P_Yp=hand.Cheq2.P+(a+2);
+if c>1
+    hand.Cheq2.P_Zm=hand.Cheq2.P-(a+2)*(b+2);
+    hand.Cheq2.P_Zp=hand.Cheq2.P+(a+2)*(b+2);
+else
+    hand.Cheq2.P_Zm=uint32(1);
+    hand.Cheq2.P_Zp=uint32(1);
+end
+
+if ~isfield(hand,'MBytesA')
+    hand.MBytesA=0;
+    hand.MemLoc={''};
+end
+[hand]=MBytesRecord(hand,whos,'Prep2bis Cheq end'); %Memory
+%%
+% New method
+
+Map_lpl(1:end/2,:,:) = hand.Map(1:end/2,:,:);  % Left electrode
+Map_lpr(end/2+1:end,:,:) = hand.Map(end/2+1:end,:,:); % Right electrode
+
+Map_sep(end/2,:,:) =  hand.Map(end/2,:,:);  % Left electrode
+
+Lel = find(Map_lpl(:,:,:)==1); % Liquid phase of left electrode
+Ler = find(Map_lpr(:,:,:)==1); % Liquid phase of right electrode
+Sep = find(Map_sep(:,:,:)==1); % Separator
+
+[hand.Cheq1.Sep]=(ismember(hand.Cheq1.P,Sep)); 
+[hand.Cheq2.Sep]=(ismember(hand.Cheq2.P,Sep)); 
+
+[Cheq1_Lel]=(ismember(hand.Cheq1.P,Lel)); 
+[Cheq1_Ler]=(ismember(hand.Cheq1.P,Ler)); 
+
+[Cheq2_Lel]=(ismember(hand.Cheq2.P,Lel)); 
+[Cheq2_Ler]=(ismember(hand.Cheq2.P,Ler)); 
+
+hand.Cheq1.Pb(Cheq1_Lel) = uint32(length(hand.Cheq2.P)+1);
+hand.Cheq1.Pb(Cheq1_Ler) = uint32(length(hand.Cheq2.P)+2);
+
+hand.Cheq2.Pb(Cheq2_Lel) = uint32(length(hand.Cheq1.P)+1);
+hand.Cheq2.Pb(Cheq2_Ler) = uint32(length(hand.Cheq1.P)+2);
+
+[hand]=MBytesRecord(hand,whos,'Prep2bis Cheq L or R'); %Memory
+
+% Top=uint32([1:a+2:(a+2)*(b+2)*(c+2)]);
+% Base=uint32([a+2:a+2:(a+2)*(b+2)*(c+2)]);
+% 
+% [LIA2t]=ismember(hand.Cheq2.P_Xm,Top);
+% [LIA2b]=ismember(hand.Cheq2.P_Xp,Base);
+% hand.T2Top=uint32(find(LIA2t));
+% hand.T2Bot=uint32(find(LIA2b));
+
+[~,hand.Cheq2.P_Xm]=(ismember(hand.Cheq2.P_Xm,hand.Cheq1.P));
+hand.Cheq2.P_Xm=uint32(hand.Cheq2.P_Xm);
+hand.Cheq2.P_Xm(hand.Cheq2.P_Xm==0)=uint32(length(hand.Cheq1.P)+1);
+[~,hand.Cheq2.P_Xp]=(ismember(hand.Cheq2.P_Xp,hand.Cheq1.P));
+hand.Cheq2.P_Xp=uint32(hand.Cheq2.P_Xp);
+hand.Cheq2.P_Xp(hand.Cheq2.P_Xp==0)=uint32(length(hand.Cheq1.P)+1);
+[~,hand.Cheq2.P_Ym]=(ismember(hand.Cheq2.P_Ym,hand.Cheq1.P));
+hand.Cheq2.P_Ym=uint32(hand.Cheq2.P_Ym);
+hand.Cheq2.P_Ym(hand.Cheq2.P_Ym==0)=uint32(length(hand.Cheq1.P)+1);
+[~,hand.Cheq2.P_Yp]=(ismember(hand.Cheq2.P_Yp,hand.Cheq1.P));
+hand.Cheq2.P_Yp=uint32(hand.Cheq2.P_Yp);
+hand.Cheq2.P_Yp(hand.Cheq2.P_Yp==0)=uint32(length(hand.Cheq1.P)+1);
+if c>1
+    [~,hand.Cheq2.P_Zm]=ismember(hand.Cheq2.P_Zm,hand.Cheq1.P);
+    hand.Cheq2.P_Zm=uint32(hand.Cheq2.P_Zm);
+    hand.Cheq2.P_Zm(hand.Cheq2.P_Zm==0)=length(hand.Cheq1.P)+1;
+    [~,hand.Cheq2.P_Zp]=ismember(hand.Cheq2.P_Zp,hand.Cheq1.P);
+    hand.Cheq2.P_Zp=uint32(hand.Cheq2.P_Zp);
+    hand.Cheq2.P_Zp(hand.Cheq2.P_Zp==0)=length(hand.Cheq1.P)+1;
+end
+% hand.Cheq2.P_Xp(LIA2b)=uint32(length(hand.Cheq1.P)+2);
+
+% [LIA1t]=ismember(hand.Cheq1.P_Xm,Top);
+% [LIA1b]=ismember(hand.Cheq1.P_Xp,Base);
+% hand.T1Top=uint32(find(LIA1t));
+% hand.T1Bot=uint32(find(LIA1b));
+[~,hand.Cheq1.P_Xm]=(ismember(hand.Cheq1.P_Xm,hand.Cheq2.P));
+hand.Cheq1.P_Xm=uint32(hand.Cheq1.P_Xm);
+hand.Cheq1.P_Xm(hand.Cheq1.P_Xm==0)=uint32(length(hand.Cheq2.P)+1);
+[~,hand.Cheq1.P_Xp]=(ismember(hand.Cheq1.P_Xp,hand.Cheq2.P));
+hand.Cheq1.P_Xp=uint32(hand.Cheq1.P_Xp);
+hand.Cheq1.P_Xp(hand.Cheq1.P_Xp==0)=uint32(length(hand.Cheq2.P)+1);
+[~,hand.Cheq1.P_Ym]=(ismember(hand.Cheq1.P_Ym,hand.Cheq2.P));
+hand.Cheq1.P_Ym=uint32(hand.Cheq1.P_Ym);
+hand.Cheq1.P_Ym(hand.Cheq1.P_Ym==0)=uint32(length(hand.Cheq2.P)+1);
+[~,hand.Cheq1.P_Yp]=(ismember(hand.Cheq1.P_Yp,hand.Cheq2.P));
+hand.Cheq1.P_Yp=uint32(hand.Cheq1.P_Yp);
+hand.Cheq1.P_Yp(hand.Cheq1.P_Yp==0)=uint32(length(hand.Cheq2.P)+1);
+if c>1
+    [~,hand.Cheq1.P_Zm]=ismember(hand.Cheq1.P_Zm,hand.Cheq2.P);
+    hand.Cheq1.P_Zm=uint32(hand.Cheq1.P_Zm);
+    hand.Cheq1.P_Zm(hand.Cheq1.P_Zm==0)=length(hand.Cheq2.P)+1;
+    [~,hand.Cheq1.P_Zp]=ismember(hand.Cheq1.P_Zp,hand.Cheq2.P);
+    hand.Cheq1.P_Zp=uint32(hand.Cheq1.P_Zp);
+    hand.Cheq1.P_Zp(hand.Cheq1.P_Zp==0)=length(hand.Cheq2.P)+1;
+end
+% hand.Cheq1.P_Xp(LIA1b)=uint32(length(hand.Cheq2.P)+2);
+ 
+
+
 function [hand]=Preparation3(hand)
 %% Third preparation step for Tau calculation where the volume is initialised as linear
 [a,b,c]=size(hand.Map(2:end-1,2:end-1,2:end-1));
@@ -2056,6 +2298,47 @@ if hand.InLineMode==0
 end
 [hand]=MBytesRecord(hand,whos,'Prep3'); %Memory
 
+
+function [hand]=Preparation3bis(hand)
+%% Third preparation step for Tau calculation where the volume is initialised as linear
+[a,b,c]=size(hand.Map(2:end-1,2:end-1,2:end-1));
+
+T=single(hand.Map);
+
+% Boundary conditions 
+hand.TopStim=0;  % Potential of top electrode (as Ref)
+hand.BotStim=1/2;   % Potential of bottom electrode 
+
+if hand.TopStim==hand.BotStim || hand.Blocked==1 || sum(sum(hand.Map(2,2:end-1,2:end-1)))==0
+    T=single(hand.Map*hand.BotStim);
+else
+    step=(hand.BotStim-hand.TopStim)/a;
+    V= (hand.TopStim+step/2:step:hand.BotStim);
+    T(2:end-1,2:end-1,2:end-1)=single(ndgrid(V',1:b,1:c).*hand.Map(2:end-1,2:end-1,2:end-1));
+end
+
+hand.T1=double(T(hand.Cheq1.P));
+hand.T2=double(T(hand.Cheq2.P));
+
+if get(hand.Check_VaryD,'value')==0
+    hand.T1(end+2)=hand.BotStim;
+    hand.T2(end+2)=hand.BotStim;
+else
+    hand.T1(end+2)=hand.BotStim;
+    hand.T2(end+2)=hand.BotStim;
+end
+
+if hand.InLineMode==0
+    T=T(:,:,2);
+    try
+        [hand]=InitiatePlot1(hand);
+    end
+    try
+        [hand]=InitiatePlot2(hand,T,hand.Map);
+    end
+end
+[hand]=MBytesRecord(hand,whos,'Prep3bis'); %Memory
+
 function [hand]=Preparation3imp(hand)
 %% Alternative third preparation step if impedance is called
 % hand.TopStim=0;
@@ -2102,6 +2385,52 @@ hand.NN_aV.w2=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
     hand.D+complex(double(hand.NN_a(hand.Cheq2.P)))) ) );
 
 [hand]=MBytesRecord(hand,whos,'Prep3Imp'); %Memory
+
+function [hand]=Preparation3imp_sym(hand)
+%% Alternative third preparation step if impedance is called
+% hand.TopStim=0;
+% hand.BotStim=1;
+% T=complex(hand.Tconv);
+% hand.Tconv=1;
+% T(1,2:end-1,2:end-1)=2*hand.TopStim;
+% T(end,2:end-1,2:end-1)=2*hand.BotStim;
+hand.Tconv=complex((hand.Tconv));
+hand.T1=double(hand.Tconv(hand.Cheq1.P));
+hand.T2=double(hand.Tconv(hand.Cheq2.P));
+if get(hand.Check_VaryD,'value')==0
+    hand.T1(end+2)=2*hand.BotStim;
+    hand.T2(end+2)=2*hand.BotStim;
+else
+    hand.T1(end+2)=hand.BotStim;
+    hand.T2(end+2)=hand.BotStim;
+end
+if hand.InLineMode==0
+    hand.Tconv=hand.Tconv(:,:,2);
+    try
+        [hand]=InitiatePlot2(hand,(hand.Tconv),hand.Map);
+    end
+end
+% hand.Area_top=complex(sum(sum(hand.Map(2,:,:))));
+% hand.Area_bot=complex(sum(sum(hand.Map(end-1,:,:))));
+
+hand.w=complex(2-(pi)/max(size(hand.Map)*1.3));
+if hand.y(hand.freqNo)>0.5
+    hand.w=hand.w*0.90^(hand.y(hand.freqNo)-0.5);%-3
+end
+
+if hand.Aniso==1
+    hand.w=0.95*hand.w;
+end
+hand.omw=complex(1-hand.w);
+
+hand.NN_aV.sp1 = complex((complex(double(hand.NN_tot(hand.Cheq1.P))-double(hand.NN_a(hand.Cheq1.P)))*1i*2*pi*hand.freq*hand.Cdl*hand.delta_x^2)/hand.kappa) ;
+hand.NN_aV.sp2 = complex((complex(double(hand.NN_tot(hand.Cheq2.P))-double(hand.NN_a(hand.Cheq2.P)))*1i*2*pi*hand.freq*hand.Cdl*hand.delta_x^2)/hand.kappa) ;
+
+hand.NN_aV.w1=complex(hand.w./ (complex(double(hand.NN_aV.sp1)+complex(double(hand.NN_a(hand.Cheq1.P))))));
+hand.NN_aV.w2=complex(hand.w./ (complex(double(hand.NN_aV.sp2)+complex(double(hand.NN_a(hand.Cheq2.P))))));
+
+[hand]=MBytesRecord(hand,whos,'Prep3Imp_SymCell'); %Memory
+
 
 function [hand]=Iterate_mex(hand)
 %% Core iteration function for tortuosity factor calculation
@@ -2465,6 +2794,121 @@ end
 [hand]=MBytesRecord(hand,whos,'Iterate complete'); %Memory
 [hand]=AfterIterate(hand);
 
+function [hand]=Iterate_sym_mat(hand)
+%% Core iteration function for tortuosity factor calculation
+hand.iter=0;
+Error=1;
+checkNo=1;
+hand.whileFlag=1;
+[~,~,c]=size(hand.Map(2:end-1,2:end-1,2:end-1));
+[hand]=MBytesRecord(hand,whos,'Iterate SymCell'); %Memory
+if c>1 % if the volume is 3D
+    if get(hand.Check_VaryD,'value')==0
+        if hand.Aniso==0; % if the volume has isotropic voxels
+            while hand.whileFlag>0 && hand.iter<hand.iter_max
+                hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+hand.NN_aV.w1.*(...
+                    hand.T2(hand.Cheq1.P_Xm)+hand.T2(hand.Cheq1.P_Xp)+...
+                    hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp)+...
+                    hand.T2(hand.Cheq1.P_Zm)+hand.T2(hand.Cheq1.P_Zp)+hand.NN_aV.sp1.*(hand.T2(hand.Cheq1.Pb)));
+                hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+hand.NN_aV.w2.*(...
+                    hand.T1(hand.Cheq2.P_Xm)+hand.T1(hand.Cheq2.P_Xp)+...
+                    hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp)+...
+                    hand.T1(hand.Cheq2.P_Zm)+hand.T1(hand.Cheq2.P_Zp)+hand.NN_aV.sp2.*(hand.T1(hand.Cheq2.Pb)));
+                hand.iter=hand.iter+1;
+                if rem(hand.iter,hand.check_f)==0
+                    [hand]=Checks(hand);
+                end
+                
+            end
+        elseif hand.Aniso==1 % if the volume has anisotropic voxels
+%             while hand.whileFlag>0 && hand.iter<hand.iter_max
+%                 hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+hand.NN_aV.w1.*(...
+%                     hand.c_X*(hand.T2(hand.Cheq1.P_Xm)+hand.T2(hand.Cheq1.P_Xp))+...
+%                     hand.c_Y*(hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp))+...
+%                     hand.c_Z*(hand.T2(hand.Cheq1.P_Zm)+hand.T2(hand.Cheq1.P_Zp)));
+%                 hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+hand.NN_aV.w2.*(...
+%                     hand.c_X*(hand.T1(hand.Cheq2.P_Xm)+hand.T1(hand.Cheq2.P_Xp))+...
+%                     hand.c_Y*(hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp))+...
+%                     hand.c_Z*(hand.T1(hand.Cheq2.P_Zm)+hand.T1(hand.Cheq2.P_Zp)));
+%                 hand.iter=hand.iter+1;
+%                 if rem(hand.iter,hand.check_f)==0
+%                     [hand]=Checks(hand);
+%                 end
+%             end
+        end
+    else % Variable D
+%         while hand.whileFlag>0 && hand.iter<hand.iter_max
+%             hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+...
+%                 hand.R.Xm1.*hand.T2(hand.Cheq1.P_Xm)+...
+%                 hand.R.Xp1.*hand.T2(hand.Cheq1.P_Xp)+...
+%                 hand.R.Ym1.*hand.T2(hand.Cheq1.P_Ym)+...
+%                 hand.R.Yp1.*hand.T2(hand.Cheq1.P_Yp)+...
+%                 hand.R.Zm1.*hand.T2(hand.Cheq1.P_Zm)+...
+%                 hand.R.Zp1.*hand.T2(hand.Cheq1.P_Zp);
+%             hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+...
+%                 hand.R.Xm2.*hand.T1(hand.Cheq2.P_Xm)+...
+%                 hand.R.Xp2.*hand.T1(hand.Cheq2.P_Xp)+...
+%                 hand.R.Ym2.*hand.T1(hand.Cheq2.P_Ym)+...
+%                 hand.R.Yp2.*hand.T1(hand.Cheq2.P_Yp)+...
+%                 hand.R.Zm2.*hand.T1(hand.Cheq2.P_Zm)+...
+%                 hand.R.Zp2.*hand.T1(hand.Cheq2.P_Zp);
+%             hand.iter=hand.iter+1;
+%             if rem(hand.iter,hand.check_f)==0
+%                 [hand]=Checks(hand);
+%             end
+%         end
+    end
+else %% 2D version
+    if get(hand.Check_VaryD,'value')==0
+        if hand.Aniso==0; % if the volume has isotropic voxels
+            while hand.whileFlag>0 && hand.iter<hand.iter_max
+                hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+hand.NN_aV.w1.*(...
+                    hand.T2(hand.Cheq1.P_Xm)+hand.T2(hand.Cheq1.P_Xp)+...
+                    hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp)+hand.NN_aV.sp1.*(hand.T2(hand.Cheq1.Pb)));
+                hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+hand.NN_aV.w2.*(...
+                    hand.T1(hand.Cheq2.P_Xm)+hand.T1(hand.Cheq2.P_Xp)+...
+                    hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp)+hand.NN_aV.sp2.*(hand.T1(hand.Cheq2.Pb)));
+                hand.iter=hand.iter+1;
+                if rem(hand.iter,hand.check_f)==0
+                    [hand]=Checks(hand);
+                end
+            end
+        else % if the volume has anisotropic voxels
+%             while hand.whileFlag>0 && hand.iter<hand.iter_max
+%                 hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+hand.NN_aV.w1.*(...
+%                     hand.c_X*(hand.T2(hand.Cheq1.P_Xm)+hand.T2(hand.Cheq1.P_Xp))+...
+%                     hand.c_Y*(hand.T2(hand.Cheq1.P_Ym)+hand.T2(hand.Cheq1.P_Yp)));
+%                 hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+hand.NN_aV.w2.*(...
+%                     hand.c_X*(hand.T1(hand.Cheq2.P_Xm)+hand.T1(hand.Cheq2.P_Xp))+...
+%                     hand.c_Y*(hand.T1(hand.Cheq2.P_Ym)+hand.T1(hand.Cheq2.P_Yp)));
+%                 hand.iter=hand.iter+1;
+%                 if rem(hand.iter,hand.check_f)==0
+%                     [hand]=Checks(hand);
+%                 end
+%             end %iterations
+        end
+    else % Variable D
+%         while hand.whileFlag>0 && hand.iter<hand.iter_max
+%             hand.T1(1:end-2)=hand.omw*hand.T1(1:end-2)+...
+%                 hand.R.Xm1.*hand.T2(hand.Cheq1.P_Xm)+...
+%                 hand.R.Xp1.*hand.T2(hand.Cheq1.P_Xp)+...
+%                 hand.R.Ym1.*hand.T2(hand.Cheq1.P_Ym)+...
+%                 hand.R.Yp1.*hand.T2(hand.Cheq1.P_Yp);
+%             hand.T2(1:end-2)=hand.omw*hand.T2(1:end-2)+...
+%                 hand.R.Xm2.*hand.T1(hand.Cheq2.P_Xm)+...
+%                 hand.R.Xp2.*hand.T1(hand.Cheq2.P_Xp)+...
+%                 hand.R.Ym2.*hand.T1(hand.Cheq2.P_Ym)+...
+%                 hand.R.Yp2.*hand.T1(hand.Cheq2.P_Yp);
+%             hand.iter=hand.iter+1;
+%             if rem(hand.iter,hand.check_f)==0
+%                 [hand]=Checks(hand);
+%             end
+%         end
+    end
+end
+[hand]=MBytesRecord(hand,whos,'Iterate 4 SymCell complete'); %Memory
+[hand]=AfterIterate(hand);
+
 function [hand]=Checks(hand)
 hand.conDwell=5;
 hand.conTol=0.005;
@@ -2472,28 +2916,32 @@ hand.conTol=0.005;
 %% Function to check on the convergence status of the volume
 checkNo=hand.iter/hand.check_f;
 % Calculate the apparent tortuosity factors at the top and bottom faces
-if get(hand.Check_VaryD,'value')==0
-    sumT_top=sum(hand.T1(hand.T1Top))+sum(hand.T2(hand.T2Top));
-    sumT_bot=sum(hand.T1(hand.T1Bot))+sum(hand.T2(hand.T2Bot));
+if get(hand.Check_TauMode, 'Value')~=3
     
-    hand.DeffTop(checkNo)=abs(hand.Area_top*hand.TopStim-sumT_top)*2*hand.D*(a/(b*c));
-    hand.DeffBot(checkNo)=abs(hand.Area_bot*hand.BotStim-sumT_bot)*2*hand.D*(a/(b*c));
+    if get(hand.Check_VaryD,'value')==0
+        sumT_top=sum(hand.T1(hand.T1Top))+sum(hand.T2(hand.T2Top));
+        sumT_bot=sum(hand.T1(hand.T1Bot))+sum(hand.T2(hand.T2Bot));
+        
+        hand.DeffTop(checkNo)=abs(hand.Area_top*hand.TopStim-sumT_top)*2*hand.D*(a/(b*c));
+        hand.DeffBot(checkNo)=abs(hand.Area_bot*hand.BotStim-sumT_bot)*2*hand.D*(a/(b*c));
+        
+        deltaTB=abs((abs(hand.DeffTop(checkNo))-abs(hand.DeffBot(checkNo)))/mean([hand.DeffTop(checkNo),hand.DeffBot(checkNo)]));
+        
+        hand.TauFacTop(checkNo)=hand.D*hand.VolFrac./hand.DeffTop(checkNo);
+        hand.TauFacBot(checkNo)=hand.D*hand.VolFrac./hand.DeffBot(checkNo);
+    else
+        
+        F_top=sum([hand.T1(hand.T1Top);hand.T2(hand.T2Top)]./hand.Dmap([hand.Cheq1.P(hand.T1Top);hand.Cheq2.P(hand.T2Top)]))*(hand.L_Y*hand.L_Z/(0.5*hand.L_X));
+        F_bot=sum((hand.BotStim-[hand.T1(hand.T1Bot);hand.T2(hand.T2Bot)])./hand.Dmap([hand.Cheq1.P(hand.T1Bot);hand.Cheq2.P(hand.T2Bot)]))*(hand.L_Y*hand.L_Z/(0.5*hand.L_X));
+        deltaTB=abs((abs(F_top)-abs(F_bot))/mean([F_top,F_bot]));
+        
+        hand.DeffTop(checkNo)=abs(F_top/((hand.L_Y*b*hand.L_Z*c)/(hand.L_X*a)));
+        hand.DeffBot(checkNo)=abs(F_bot/((hand.L_Y*b*hand.L_Z*c)/(hand.L_X*a)));
+        
+        hand.TauFacTop(checkNo)=hand.Qcv/abs(F_top);
+        hand.TauFacBot(checkNo)=hand.Qcv/abs(F_bot);
+    end
     
-    deltaTB=abs((abs(hand.DeffTop(checkNo))-abs(hand.DeffBot(checkNo)))/mean([hand.DeffTop(checkNo),hand.DeffBot(checkNo)]));
-    
-    hand.TauFacTop(checkNo)=hand.D*hand.VolFrac./hand.DeffTop(checkNo);
-    hand.TauFacBot(checkNo)=hand.D*hand.VolFrac./hand.DeffBot(checkNo);
-else
-    
-    F_top=sum([hand.T1(hand.T1Top);hand.T2(hand.T2Top)]./hand.Dmap([hand.Cheq1.P(hand.T1Top);hand.Cheq2.P(hand.T2Top)]))*(hand.L_Y*hand.L_Z/(0.5*hand.L_X));
-    F_bot=sum((hand.BotStim-[hand.T1(hand.T1Bot);hand.T2(hand.T2Bot)])./hand.Dmap([hand.Cheq1.P(hand.T1Bot);hand.Cheq2.P(hand.T2Bot)]))*(hand.L_Y*hand.L_Z/(0.5*hand.L_X));
-    deltaTB=abs((abs(F_top)-abs(F_bot))/mean([F_top,F_bot]));
-    
-    hand.DeffTop(checkNo)=abs(F_top/((hand.L_Y*b*hand.L_Z*c)/(hand.L_X*a)));
-    hand.DeffBot(checkNo)=abs(F_bot/((hand.L_Y*b*hand.L_Z*c)/(hand.L_X*a)));
-    
-    hand.TauFacTop(checkNo)=hand.Qcv/abs(F_top);
-    hand.TauFacBot(checkNo)=hand.Qcv/abs(F_bot);
 end
 % Check for convergence of tau at the two faces
 if hand.impCheck~=1
@@ -2529,50 +2977,80 @@ if hand.impCheck~=1
         %         end
     end
 else % Impedance mode
-    TauRat=(hand.L_Y*hand.L_Z)/hand.L_X;
-    hand.ImpedanceTop(hand.freqNo,checkNo)=-(0.5/(TauRat*(hand.Area_top*hand.TopStim-sumT_top)/(1/hand.D)));
-    hand.ImpedanceBot(hand.freqNo,checkNo)= (0.5/(TauRat*(hand.Area_bot*hand.BotStim-sumT_bot)/(1/hand.D)));
-    if checkNo<6
-        hand.whileFlag=hand.conDwell-1;
-    else
-        hand.conTol=0.01;
-        %         [mean(abs([hand.T1(:); hand.T2(:)])),...
-        %             abs(real(hand.ImpedanceBot(hand.freqNo,checkNo))/real(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1),...
-        %             abs(imag(hand.ImpedanceBot(hand.freqNo,checkNo))/imag(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1),...
-        %             abs(abs(hand.ImpedanceBot(hand.freqNo,checkNo))/abs(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1),...
-        %             abs(angle(hand.ImpedanceBot(hand.freqNo,checkNo))/angle(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)];
-        if      abs(real(hand.ImpedanceBot(hand.freqNo,checkNo))/real(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)<hand.conTol &&...
-                abs(imag(hand.ImpedanceBot(hand.freqNo,checkNo))/imag(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)<hand.conTol% &&...
-            %                abs(real(hand.ImpedanceTop(hand.freqNo,checkNo))/real(hand.ImpedanceTop(hand.freqNo,checkNo-6))-1)<hand.conTol &&...
-            %                abs(imag(hand.ImpedanceTop(hand.freqNo,checkNo))/imag(hand.ImpedanceTop(hand.freqNo,checkNo-6))-1)<hand.conTol
-            hand.ImpedanceBotConv(hand.freqNo)=hand.ImpedanceBot(hand.freqNo,checkNo);
-            hand.ImpedanceTopConv(hand.freqNo)=hand.ImpedanceTop(hand.freqNo,checkNo);
-            hand.whileFlag=hand.whileFlag-1;
-            
+    if get(hand.Check_TauMode, 'Value')~=3
+    
+        TauRat=(hand.L_Y*hand.L_Z)/hand.L_X;
+        hand.ImpedanceTop(hand.freqNo,checkNo)=-(0.5/(TauRat*(hand.Area_top*hand.TopStim-sumT_top)/(1/hand.D)));
+        hand.ImpedanceBot(hand.freqNo,checkNo)= (0.5/(TauRat*(hand.Area_bot*hand.BotStim-sumT_bot)/(1/hand.D)));
+        if checkNo<6
+            hand.whileFlag=hand.conDwell-1;
         else
-            if hand.whileFlag~=hand.conDwell
-                hand.whileFlag=hand.conDwell;
+            hand.conTol=0.01;
+            %         [mean(abs([hand.T1(:); hand.T2(:)])),...
+            %             abs(real(hand.ImpedanceBot(hand.freqNo,checkNo))/real(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1),...
+            %             abs(imag(hand.ImpedanceBot(hand.freqNo,checkNo))/imag(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1),...
+            %             abs(abs(hand.ImpedanceBot(hand.freqNo,checkNo))/abs(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1),...
+            %             abs(angle(hand.ImpedanceBot(hand.freqNo,checkNo))/angle(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)];
+            if      abs(real(hand.ImpedanceBot(hand.freqNo,checkNo))/real(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)<hand.conTol &&...
+                    abs(imag(hand.ImpedanceBot(hand.freqNo,checkNo))/imag(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)<hand.conTol% &&...
+                %                abs(real(hand.ImpedanceTop(hand.freqNo,checkNo))/real(hand.ImpedanceTop(hand.freqNo,checkNo-6))-1)<hand.conTol &&...
+                %                abs(imag(hand.ImpedanceTop(hand.freqNo,checkNo))/imag(hand.ImpedanceTop(hand.freqNo,checkNo-6))-1)<hand.conTol
+                hand.ImpedanceBotConv(hand.freqNo)=hand.ImpedanceBot(hand.freqNo,checkNo);
+                hand.ImpedanceTopConv(hand.freqNo)=hand.ImpedanceTop(hand.freqNo,checkNo);
+                hand.whileFlag=hand.whileFlag-1;
+                
+            else
+                if hand.whileFlag~=hand.conDwell
+                    hand.whileFlag=hand.conDwell;
+                end
+            end
+            if hand.iter>=hand.iter_max-hand.check_f
+                hand.ImpedanceBotConv(hand.freqNo)=hand.ImpedanceBot(hand.freqNo,checkNo);
+                hand.ImpedanceTopConv(hand.freqNo)=hand.ImpedanceTop(hand.freqNo,checkNo);
+                Error=1;
+                hand.ConvErr=hand.ConvErr+1;
+                hand.iter_max=hand.iter_max*1.5;
+                display('Simulation not converged')
+                return
             end
         end
-        if hand.iter>=hand.iter_max-hand.check_f
-            hand.ImpedanceBotConv(hand.freqNo)=hand.ImpedanceBot(hand.freqNo,checkNo);
-            hand.ImpedanceTopConv(hand.freqNo)=hand.ImpedanceTop(hand.freqNo,checkNo);
-            Error=1;
-            hand.ConvErr=hand.ConvErr+1;
-            hand.iter_max=hand.iter_max*1.5;
-            display('Simulation not converged')
-            return
+        %%%%%%     if unstable
+        %         hand.w=hand.w*0.99;
+        %         hand.omw=complex(1-hand.w);
+        %
+        %         hand.NN_aV.w1=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
+        %             hand.D+complex(double(hand.NN_a(hand.Cheq1.P)))) ) );
+        %         hand.NN_aV.w2=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
+        %             hand.D+complex(double(hand.NN_a(hand.Cheq2.P)))) ) );
+        %     end
+    else
+        hand.cur = -hand.kappa.*(sum((hand.T1(hand.Cheq1.Sep)-hand.T2(hand.Cheq1.P_Xp(hand.Cheq1.Sep))))+sum((hand.T2(hand.Cheq2.Sep)-hand.T1(hand.Cheq2.P_Xp(hand.Cheq2.Sep)))))/(hand.delta_x);
+        hand.ImpedanceBot(hand.freqNo,checkNo)= (2*hand.BotStim-hand.TopStim)./(hand.cur);
+        
+        if checkNo<6
+            hand.whileFlag=hand.conDwell-1;
+        else
+            hand.conTol=0.01;
+            if      abs(real(hand.ImpedanceBot(hand.freqNo,checkNo))/real(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)<hand.conTol &&...
+                    abs(imag(hand.ImpedanceBot(hand.freqNo,checkNo))/imag(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)<hand.conTol% &&...
+                hand.ImpedanceBotConv(hand.freqNo)=hand.ImpedanceBot(hand.freqNo,checkNo);
+                hand.whileFlag=hand.whileFlag-1;
+                
+            else
+                if hand.whileFlag~=hand.conDwell
+                    hand.whileFlag=hand.conDwell;
+                end
+            end
+            if hand.iter>=hand.iter_max-hand.check_f
+                hand.ImpedanceBotConv(hand.freqNo)=hand.ImpedanceBot(hand.freqNo,checkNo);
+                Error=1;
+                hand.ConvErr=hand.ConvErr+1;
+                hand.iter_max=hand.iter_max*1.5;
+                display('Simulation not converged')
+                return
+            end
         end
     end
-    %%%%%%     if unstable
-    %         hand.w=hand.w*0.99;
-    %         hand.omw=complex(1-hand.w);
-    %
-    %         hand.NN_aV.w1=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
-    %             hand.D+complex(double(hand.NN_a(hand.Cheq1.P)))) ) );
-    %         hand.NN_aV.w2=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
-    %             hand.D+complex(double(hand.NN_a(hand.Cheq2.P)))) ) );
-    %     end
 end
 Error=1;
 % hand.TauFacTop(checkNo)=TauRat*hand.VolFrac*hand.Qcv/(2*sum(sum(T(2,:,:)))); %Should be Perhand.VolFrac(counter)
@@ -3117,17 +3595,23 @@ function [hand]=ImpPlot(hand)
 %% Plot the impedance responce data
 figure(hand.impFig)
 [a b c]=size(hand.Tconv(2:end-1,2:end-1,2:end-1));
-if hand.PercFlag==1 && hand.Blocked==0
-    normFactor=hand.D*(b*hand.L_Y*c*hand.L_Z)/(a*hand.L_X);
+if get(hand.Check_TauMode, 'Value')~=3   
+    if hand.PercFlag==1 && hand.Blocked==0
+        normFactor=hand.D*(b*hand.L_Y*c*hand.L_Z)/(a*hand.L_X);
+    else
+        %     normFactor=(mean(mean(mean(hand.Map(end-1,2:end-1,2:end-1)))))^2/(hand.VolFrac);%/max(real(hand.ImpedanceBotConv)); %hand.VolFrac;
+        %     hand.MAA=mean(hand.PlanePore(hand.PlanePore~=0));
+        normFactor=hand.D*(hand.MAAa*hand.L_Y*hand.L_Z)/(hand.L_X*hand.Max_Path);
+    end
+    
+    
 else
-    %     normFactor=(mean(mean(mean(hand.Map(end-1,2:end-1,2:end-1)))))^2/(hand.VolFrac);%/max(real(hand.ImpedanceBotConv)); %hand.VolFrac;
-    %     hand.MAA=mean(hand.PlanePore(hand.PlanePore~=0));
-    normFactor=hand.D*(hand.MAAa*hand.L_Y*hand.L_Z)/(hand.L_X*hand.Max_Path);
+    normFactor=1e-9 ;
 end
-% normFactor=1e-9;
+       
 if hand.freqNo==1
-    disp(['Mean accessible pore area = ',num2str(round(hand.MAAh*hand.L_Y*hand.L_Z*1e18)),' nm^2 (',num2str(round(hand.MAAh/(b*c)*100)),'% or CV',')']);
-    disp(['Maximum path length = ',num2str(hand.Max_Path*hand.L_X*1e9),' nm (',num2str(round((hand.Max_Path)/a*100)),'% of CV)']);
+%     disp(['Mean accessible pore area = ',num2str(round(hand.MAAh*hand.L_Y*hand.L_Z*1e18)),' nm^2 (',num2str(round(hand.MAAh/(b*c)*100)),'% or CV',')']);
+%     disp(['Maximum path length = ',num2str(hand.Max_Path*hand.L_X*1e9),' nm (',num2str(round((hand.Max_Path)/a*100)),'% of CV)']);
     annotation(hand.impFig,'textbox',...
         [0.05 0.90 0.9 0.1],...
         'String',    ['\verb|',hand.filename,'|'],...
