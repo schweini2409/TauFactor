@@ -862,9 +862,9 @@ end
 guidata(hObject, hand);
 
 function [hand]=SymmetericalPhaseGuesser(hand)
-set(hand.Edit_D_Black,'String','Etrd')
+set(hand.Edit_D_Black,'String','Elyt')
 set(hand.Edit_D_Green,'String','Sep')
-set(hand.Edit_D_White,'String','Elyt')
+set(hand.Edit_D_White,'String','Etrd')
 
 function [hand]=ExpectedRAM(hObject, eventdata, hand)
 %% Calculate the approximate required memory
@@ -1531,7 +1531,7 @@ else
         1,b;...
         1,c];
     [hand]=Initialise(hand);
-    if isfield(hand,'VolFrac')
+    if isfield(hand,'VolFrac') && get(hand.Check_TauMode, 'Value')~=3
         if hand.InLineMode==0
             varname=[hand.fil,'.Tau','_',num2str(hand.Pha(1)),num2str(num2str(hand.Dir))];
             
@@ -1572,8 +1572,8 @@ if get(hand.Check_Reverse, 'Value')==1 && hand.impCheck==1
 end
 
 [hand]=Percolation(hand);
-% hand.Net_Perc=logical(hand.Net_Perc);
-hand.Net_Perc=logical(hand.Net);
+hand.Net_Perc=logical(hand.Net_Perc);
+% hand.Net_Perc=logical(hand.Net);
 
 [a,b,c]=size(hand.Net_Perc);
 hand.VolFrac_Perc=sum(hand.Net_Perc(:))/sum(hand.Net(:));
@@ -1691,7 +1691,7 @@ else
 %                 hand.freqChar=hand.D/(hand.Max_Path*hand.delta_x)^2;
 %             end
             
-            hand.y=6:-0.1:-2; % freq range
+            hand.y=16:-0.1:10; % freq range
             tic
             hand.impFig=figure(...
                 'Name',['TF_Impedance: ','p',hand.Pha(1),'d',num2str(hand.Dir),'_',hand.fil],...
@@ -1719,9 +1719,7 @@ else
                 if hand.Check_FreqPlots==1
                     [hand]=InitiatePlot2(hand,(hand.Tconv(:,:,2)),hand.Map);
                 end
-                
                 [hand]=Iterate_sym_mat(hand); % Iterations
-
                 try
                     [hand]=ImpPlot(hand);
                 end
@@ -2421,6 +2419,7 @@ end
 if hand.Aniso==1
     hand.w=0.95*hand.w;
 end
+hand.w = complex(0.85);
 hand.omw=complex(1-hand.w);
 
 hand.NN_aV.sp1 = complex((complex(double(hand.NN_tot(hand.Cheq1.P))-double(hand.NN_a(hand.Cheq1.P)))*1i*2*pi*hand.freq*hand.Cdl*hand.delta_x^2)/hand.kappa) ;
@@ -3606,12 +3605,13 @@ if get(hand.Check_TauMode, 'Value')~=3
     
     
 else
-    normFactor=1e-9 ;
+    normFactor=1 ;
 end
        
 if hand.freqNo==1
-%     disp(['Mean accessible pore area = ',num2str(round(hand.MAAh*hand.L_Y*hand.L_Z*1e18)),' nm^2 (',num2str(round(hand.MAAh/(b*c)*100)),'% or CV',')']);
-%     disp(['Maximum path length = ',num2str(hand.Max_Path*hand.L_X*1e9),' nm (',num2str(round((hand.Max_Path)/a*100)),'% of CV)']);
+    
+    %     disp(['Mean accessible pore area = ',num2str(round(hand.MAAh*hand.L_Y*hand.L_Z*1e18)),' nm^2 (',num2str(round(hand.MAAh/(b*c)*100)),'% or CV',')']);
+    %     disp(['Maximum path length = ',num2str(hand.Max_Path*hand.L_X*1e9),' nm (',num2str(round((hand.Max_Path)/a*100)),'% of CV)']);
     annotation(hand.impFig,'textbox',...
         [0.05 0.90 0.9 0.1],...
         'String',    ['\verb|',hand.filename,'|'],...
@@ -3621,42 +3621,62 @@ if hand.freqNo==1
         'FontSize',16,...
         'FitBoxToText','off');
     hand.ImpPlot.Spectrum=plot(real(hand.ImpedanceBotConv*normFactor),-imag(hand.ImpedanceBotConv*normFactor),'-x','linewidth',1.5);
-    hand.ImpPlot.Axes=gca;
-    if hand.PercFlag==1 && hand.Blocked==0
-        hold on; plot(hand.Tau/hand.VolFrac,0,'r*','markersize',7);hold off
-        lim=roundsf(hand.Tau/hand.VolFrac,1,'ceil');
+    hand.ImpPlot.Axes=gca;    
+    if get(hand.Check_TauMode, 'Value')~=3   
+        
+        if hand.PercFlag==1 && hand.Blocked==0
+            hold on; plot(hand.Tau/hand.VolFrac,0,'r*','markersize',7);hold off
+            lim=roundsf(hand.Tau/hand.VolFrac,1,'ceil');
+        else
+            lim=round(max(real(hand.ImpedanceBotConv*normFactor))*3);
+        end
+        hold on; hand.ImpPlot.wc=plot(-1,-1,'or','markersize',7);hold off;
+        if hand.PercFlag==1 && hand.Blocked==0
+            y=-10:.1:10;
+            FLW=hand.Tau/hand.VolFrac*tanh(sqrt(1i*2.^y))./sqrt(1i*2.^y);
+            hold on
+            plot(real([FLW,0]),-imag([FLW,0]),'color',[0.5 0.5 0.5],'linewidth',1.5)
+            plot(real(FLW(y==0)),-imag(FLW(y==0)),'+',...
+                'markersize',7,...
+                'color',[0.5 0.5 0.5],...
+                'linewidth',1.5)
+            hold off
+        end
+        xlim([0 max(lim,1)]);
+        ylim([0 max(lim,1)]);
+        if hand.PercFlag==1 && hand.Blocked==0
+            legend('Impedance','$\tau/\varepsilon$','$D/L_\mathrm{CV}^2$','FLW')
+        else
+            legend('Impedance','$D/L^2$')
+        end
+        set(legend,'Interpreter','latex');
+        hold on; plot([0 max(lim,1)],[0,max(lim,1)],':k','linewidth',1.5);hold off
+        set(hand.ImpPlot.Axes,'TickLabelInterpreter','latex')
+        axis(hand.ImpPlot.Axes,'square');
+        xlabel('$\tilde{Z}''$','Interpreter','Latex');
+        ylabel('-$\tilde{Z}''''$','Interpreter','Latex');
+        title('Normalised Impedance','Interpreter','Latex')
+        set(hand.ImpPlot.Axes,'TickLabelInterpreter','latex',...
+            'LineWidth',1.2,...
+            'FontSize',16)
     else
-        lim=round(max(real(hand.ImpedanceBotConv*normFactor))*3);
+        lim=max(real(hand.ImpedanceBotConv*normFactor))*20;       
+%         hold on; hand.ImpPlot.wc=plot(-1,-1,'or','markersize',7);hold off;
+        
+        xlim([0 lim]);
+        ylim([0 lim]);
+        legend('Impedance')        
+        set(legend,'Interpreter','latex');
+        hold on; plot([real(hand.ImpedanceBotConv(1)*normFactor),lim],[-imag(hand.ImpedanceBotConv(1)*normFactor),lim],':k','linewidth',1.5);hold off
+        set(hand.ImpPlot.Axes,'TickLabelInterpreter','latex')
+        axis(hand.ImpPlot.Axes,'square');
+        xlabel('$\tilde{Z}''$','Interpreter','Latex');
+        ylabel('-$\tilde{Z}''''$','Interpreter','Latex');
+        title('Normalised Impedance','Interpreter','Latex')
+        set(hand.ImpPlot.Axes,'TickLabelInterpreter','latex',...
+            'LineWidth',1.2,...
+            'FontSize',16)
     end
-    hold on; hand.ImpPlot.wc=plot(-1,-1,'or','markersize',7);hold off;
-    if hand.PercFlag==1 && hand.Blocked==0
-        y=-10:.1:10;
-        FLW=hand.Tau/hand.VolFrac*tanh(sqrt(1i*2.^y))./sqrt(1i*2.^y);
-        hold on
-        plot(real([FLW,0]),-imag([FLW,0]),'color',[0.5 0.5 0.5],'linewidth',1.5)
-        plot(real(FLW(y==0)),-imag(FLW(y==0)),'+',...
-            'markersize',7,...
-            'color',[0.5 0.5 0.5],...
-            'linewidth',1.5)
-        hold off
-    end
-    xlim([0 max(lim,1)]);
-    ylim([0 max(lim,1)]);
-    if hand.PercFlag==1 && hand.Blocked==0
-        legend('Impedance','$\tau/\varepsilon$','$D/L_\mathrm{CV}^2$','FLW')
-    else
-        legend('Impedance','$D/L^2$')
-    end
-    set(legend,'Interpreter','latex');
-    hold on; plot([0 max(lim,1)],[0,max(lim,1)],':k','linewidth',1.5);hold off
-    set(hand.ImpPlot.Axes,'TickLabelInterpreter','latex')
-    axis(hand.ImpPlot.Axes,'square');
-    xlabel('$\tilde{Z}''$','Interpreter','Latex');
-    ylabel('-$\tilde{Z}''''$','Interpreter','Latex');
-    title('Normalised Impedance','Interpreter','Latex')
-    set(hand.ImpPlot.Axes,'TickLabelInterpreter','latex',...
-        'LineWidth',1.2,...
-        'FontSize',16)
 end
 set(hand.ImpPlot.Spectrum,'XData',real(hand.ImpedanceBotConv*normFactor))
 set(hand.ImpPlot.Spectrum,'YData',-imag(hand.ImpedanceBotConv*normFactor))
@@ -3692,17 +3712,17 @@ if get(hand.Check_pdfSave,'Value')==1
     hand.impFigGif1(:,:,1,hand.freqNo) = rgb2ind(f1.cdata,hand.cccmap2,'nodither');
     hand.impFigGif2(:,:,1,hand.freqNo) = rgb2ind(f2.cdata,hand.cccmap2,'nodither');
 end
-assignin(hand.WoSpace,'temp',real(hand.freqSet/hand.freqChar));
-evalin(hand.WoSpace,[varname,'.Freq = temp'';']);
-assignin(hand.WoSpace,'temp',hand.ImpedanceBotConv);
-evalin(hand.WoSpace,[varname,'.Z = temp;']);
-assignin(hand.WoSpace,'temp',hand.MAAh*1e-18);
-if hand.PercFlag==0 || hand.Blocked==1
-    evalin(hand.WoSpace,[varname,'.MAA = temp;']);
-    assignin(hand.WoSpace,'temp',hand.Max_Path*1e-9);
-    evalin(hand.WoSpace,[varname,'.L = temp;']);
-end
-evalin(hand.WoSpace,'clear temp');
+% assignin(hand.WoSpace,'temp',real(hand.freqSet/hand.freqChar));
+% evalin(hand.WoSpace,[varname,'.Freq = temp'';']);
+% assignin(hand.WoSpace,'temp',hand.ImpedanceBotConv);
+% evalin(hand.WoSpace,[varname,'.Z = temp;']);
+% assignin(hand.WoSpace,'temp',hand.MAAh*1e-18);
+% if hand.PercFlag==0 || hand.Blocked==1
+%     evalin(hand.WoSpace,[varname,'.MAA = temp;']);
+%     assignin(hand.WoSpace,'temp',hand.Max_Path*1e-9);
+%     evalin(hand.WoSpace,[varname,'.L = temp;']);
+% end
+% evalin(hand.WoSpace,'clear temp');
 drawnow
 
 function [Q_thro,Q_plane]=FluxHunter3ani(hand)
