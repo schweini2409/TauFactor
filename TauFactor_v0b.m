@@ -831,11 +831,11 @@ else
     hand.iter_max=max(size(hand.Net_Or))*30;
 end
 
-if get(hand.Check_TauMode, 'Value')==2
-    hand.iter_max=hand.iter_max*14;
+if get(hand.Check_TauMode, 'Value')>1
+    hand.iter_max=hand.iter_max*60;
 end
 hand.time_approx=roundsf(SimsNo*numel(hand.Net_Or)*hand.iter_max/4*waitcoeff/86400,2,'round');
-if get(hand.Check_TauMode,'Value')==2
+if get(hand.Check_TauMode,'Value')>1
     hand.time_approx=hand.time_approx*8;
 end
 
@@ -873,7 +873,7 @@ if str2double(get(hand.L1box,'String'))~=str2double(get(hand.L2box,'String')) ||
         str2double(get(hand.L2box,'String'))~=str2double(get(hand.L3box,'String'))
     memcoeff=1.3*memcoeff;
 end
-if get(hand.Check_TauMode,'Value')==2
+if get(hand.Check_TauMode,'Value')>1
     memcoeff=1.4*memcoeff;
 end
 if get(hand.Check_VaryD,'Value')==1;
@@ -1026,7 +1026,7 @@ end
 if hand.iter_max<10
     hand.iter_max=10;
 end
-if get(hand.Check_TauMode,'Value')~=2
+if get(hand.Check_TauMode,'Value')<2
     hand.check_f=round(hand.iter_max/200);
 else
     hand.check_f=round(hand.iter_max/800);
@@ -1069,7 +1069,7 @@ if get(hand.Check_VaryD,'value')==0
     end
     if get(hand.Check_B2,'Value')==1
         [~,~,c]=size(hand.Net_Or);
-        hand.Net=hand.Net_Or==0;
+        hand.Net=hand.Net_Or==1;
         if c>1
             hand.Net=logical(permute(hand.Net,[2 3 1]));
         else
@@ -1083,10 +1083,17 @@ if get(hand.Check_VaryD,'value')==0
     if get(hand.Check_B3,'Value')==1
         hand.Net=hand.Net_Or==0;
         hand.Net=logical(flip(permute(hand.Net,[3 1 2]),3));
+        hand.Net_Ag = hand.Net;
+        hand.Net_Cu = flip(permute(hand.Net,[3 1 2]),3);
         hand.Dir=3;
         hand.Pha='Black';
+%         if hand.InLineMode==0
+%             T=single(hand.Map);
+%             [hand]=InitiatePlot1(hand);
+%             [hand]=InitiatePlot2(hand,T,hand.Map);
+%         end
         [hand]=RVA_Tau(hand);
-        hand.TauSet(1,3)=hand.Results.Tau;
+        hand.TauSet(1,3)=hand.Results.Tau;       
     end
     
     if get(hand.Check_G1,'Value')==1
@@ -1564,16 +1571,21 @@ function [hand]=Initialise(hand)
 %% First step of preperation for tortuosity calculation in which the ordering of calls is set
 tic
 hand.Results.SimTime=0;
-if get(hand.Check_TauMode,'Value')==2
+if get(hand.Check_TauMode,'Value')>1
     hand.impCheck=1;
 end
 if get(hand.Check_Reverse, 'Value')==1 && hand.impCheck==1
     hand.Net=flipud(hand.Net);
 end
 
+if length(hand.NetVals)==3
+    hand.Net_Sep=uint32(find(hand.Net_Or==1));
+end
+    
+
 [hand]=Percolation(hand);
 hand.Net_Perc=logical(hand.Net_Perc);
-% hand.Net_Perc=logical(hand.Net);
+hand.PercFlag=1;
 
 [a,b,c]=size(hand.Net_Perc);
 hand.VolFrac_Perc=sum(hand.Net_Perc(:))/sum(hand.Net(:));
@@ -1629,7 +1641,8 @@ else
             else
                 hand.y=-2:0.1:11;%-4:0.5:11;%-2:0.5:10
             end
-            tic
+            tic        hand.impCheck=0;
+
             hand.impFig=figure(...
                 'Name',['TF_Impedance: ','p',hand.Pha(1),'d',num2str(hand.Dir),'_',hand.fil],...
                 'units','characters',...
@@ -1672,17 +1685,16 @@ else
                 end
             end
             [hand]=Saving(hand);
+
         case 3 %Symmetrical
-            hand.Cdl=str2double(get(hand.edit_capacitance,'string'));
+            hand.C_dl=str2double(get(hand.edit_capacitance,'string'));
             hand.kappa=str2double(get(hand.edit_conductivity,'string'));         
             
             hand.impCheck=1;
-            hand.Blocked=1 ; % ???
             
             hand.delta_x=complex(hand.L_X);
-            
             hand.Results.Tau=inf;
-            hand.Tau=1;
+%             hand.Tau=1;
             hand.Tconv=single(hand.Map);
 
 %             if hand.PercFlag==1
@@ -1691,7 +1703,7 @@ else
 %                 hand.freqChar=hand.D/(hand.Max_Path*hand.delta_x)^2;
 %             end
             
-            hand.y=16:-0.1:10; % freq range
+            hand.y=6:-0.1:-3; % freq range
             tic
             hand.impFig=figure(...
                 'Name',['TF_Impedance: ','p',hand.Pha(1),'d',num2str(hand.Dir),'_',hand.fil],...
@@ -1701,7 +1713,7 @@ else
                 'Color',[1 1 1]);
 %             hand.freqSet=complex(hand.freqChar*2.^hand.y);
             
-            hand.freqSet=complex(10.^hand.y);  
+%             hand.freqSet=complex(10.^hand.y);  
             hand.ImpedanceBotConv=ones(length(hand.y),1)*nan;
             
             for freqNo=1:length(hand.y)
@@ -1716,6 +1728,8 @@ else
                     end
                 end
                 [hand]=Preparation3imp_sym(hand);
+%                 [hand]=Preparation3imp(hand);
+
                 if hand.Check_FreqPlots==1
                     [hand]=InitiatePlot2(hand,(hand.Tconv(:,:,2)),hand.Map);
                 end
@@ -1819,6 +1833,7 @@ else
     hand.Net_Perc(hand.Net_Or==OrPhaseOfInterest)=1;
     hand.PercFlag=1;
 end
+
 %% Plotting ditance maps with cut-off areas
 % GrayPore=1-cat(3,Net_Perc,Net_Perc,Net_Perc);
 % imagesc(DM);colormap(jet);
@@ -1836,9 +1851,9 @@ hand.VolFrac=sum(hand.Net(:))/numel(hand.Net);
 hand.Net=1;
 switch hand.Dir
     case 1
-        hand.L_X=1e-9*str2double(get(hand.L1box,'String'));
-        hand.L_Y=1e-9*str2double(get(hand.L2box,'String'));
-        hand.L_Z=1e-9*str2double(get(hand.L3box,'String'));
+        hand.L_X=1*str2double(get(hand.L1box,'String'));
+        hand.L_Y=1*str2double(get(hand.L2box,'String'));
+        hand.L_Z=1*str2double(get(hand.L3box,'String'));
     case 2
         hand.L_X=1e-9*str2double(get(hand.L2box,'String'));
         hand.L_Y=1e-9*str2double(get(hand.L3box,'String'));
@@ -1901,7 +1916,7 @@ else
     hand.NN_a(2:end-1,2:end-1,2:end-1)=2*hand.Map(2:end-1,2:end-1,2:end-1).*(...
         hand.L_Y*hand.L_Z/hand.L_X*(...
         hand.Map(1:end-2,2:end-1,2:end-1)./(hand.Dmap(1:end-2,2:end-1,2:end-1)+hand.Dmap(2:end-1,2:end-1,2:end-1))+...
-        hand.Map(3:end  ,2:end-1,2:end-1)./(hand.Dmap(3:end  ,2:end-1,2:end-1)+hand.Dmap(2:end-1,2:end-1,2:end-1)))...
+        hand.Map(3:end  ,2:end-1,2:end-1/21)./(hand.Dmap(3:end  ,2:end-1,2:end-1)+hand.Dmap(2:end-1,2:end-1,2:end-1)))...
         +hand.L_Z*hand.L_X/hand.L_Y*(...
         hand.Map(2:end-1,1:end-2,2:end-1)./(hand.Dmap(2:end-1,1:end-2,2:end-1)+hand.Dmap(2:end-1,2:end-1,2:end-1))+...
         hand.Map(2:end-1,3:end  ,2:end-1)./(hand.Dmap(2:end-1,3:end  ,2:end-1)+hand.Dmap(2:end-1,2:end-1,2:end-1)))...
@@ -2043,42 +2058,69 @@ if c>1
 end
 eval(['hand.Cheq1.P_Xp(LIA1b)=',hand.AddClass,'(length(hand.Cheq2.P)+2);']);
 
+
 function [hand]=Preparation2bis(hand)
 [a,b,c]=size(hand.Net_Perc);
+% Generate maps of nearest neighbours
 
 hand.Map=logical(padarray(hand.Net_Perc, [1,1,1],0));
 
-hand.Net_t = ones(size(hand.Net_Perc));
-hand.Map_t=logical(padarray(hand.Net_t, [1,1,1],0));
+Map_sep = zeros([a,b,c]) ;
 
-hand.Net_t=1;
-hand.Net_Perc=1;
 
-% Calculate adjusted map of adjusted nearest neighbours
-hand.NN_a=zeros(size(hand.Map),'double');
-hand.NN_a(2:end-1,2:end-1,2:end-1)=...
-    hand.c_X*double((hand.Map(1:end-2,2:end-1,2:end-1)+hand.Map(3:end  ,2:end-1,2:end-1)))+...
-    hand.c_Y*double((hand.Map(2:end-1,1:end-2,2:end-1)+hand.Map(2:end-1,3:end  ,2:end-1)))+...
-    hand.c_Z*double((hand.Map(2:end-1,2:end-1,1:end-2)+hand.Map(2:end-1,2:end-1,3:end  )));
-
-hand.Dmap=1;
-
-hand.NN_tot=zeros(size(hand.Map_t),'double');
-hand.NN_tot(2:end-1,2:end-1,2:end-1)=...
-    hand.c_X*double((hand.Map_t(1:end-2,2:end-1,2:end-1)+hand.Map_t(3:end  ,2:end-1,2:end-1)))+...
-    hand.c_Y*double((hand.Map_t(2:end-1,1:end-2,2:end-1)+hand.Map_t(2:end-1,3:end  ,2:end-1)))+...
-    hand.c_Z*double((hand.Map_t(2:end-1,2:end-1,1:end-2)+hand.Map_t(2:end-1,2:end-1,3:end)));
-
-if hand.Aniso==0
-    hand.NN_a=hand.NN_a/hand.c_X; % nearest neighbours without adjust
-    hand.NN_tot=hand.NN_tot/hand.c_X;  % total nearest neighbours
+if length(hand.NetVals)==3
+    hand.Net_Perc(hand.Net_Sep) = 1;
+    Map_sep(hand.Net_Sep) = 1;
 end
 
-[hand]=MBytesRecord(hand,whos,'Preparation2bis NN and NN_tot'); %Memory
+Map_NN_a=logical(padarray(hand.Net_Perc, [1,1,1],0));
 
-Map_lpl = logical(padarray(zeros([a,b,c]), [1,1,1],0));
-Map_lpr = logical(padarray(zeros([a,b,c]), [1,1,1],0));
-Map_sep = logical(padarray(zeros([a,b,c]), [1,1,1],0));
+hand.Net_t = ones(size(hand.Net_Perc));
+Map_t=logical(padarray(hand.Net_t, [1,1,1],0));
+
+Map_lptop = logical(padarray(zeros([a,b,c]), [1,1,1],0));  % Top electrode
+Map_lpbot = logical(padarray(zeros([a,b,c]), [1,1,1],0)); % Bot electrode
+Map_sep = logical(padarray(Map_sep, [1,1,1],0)); % Separator
+Map_NN = Map_NN_a-Map_sep;
+
+%End new
+hand.Net_Perc=1;
+hand.Net_t=1;
+
+% Calculate nearest neighbours - separator voxels are considered as solid phase here
+    
+hand.NN=zeros(size(Map_NN),'double');
+hand.NN(2:end-1,2:end-1,2:end-1)=...
+    hand.c_X*double((Map_NN(1:end-2,2:end-1,2:end-1)+Map_NN(3:end  ,2:end-1,2:end-1)))+...
+    hand.c_Y*double((Map_NN(2:end-1,1:end-2,2:end-1)+Map_NN(2:end-1,3:end  ,2:end-1)))+...
+    hand.c_Z*double((Map_NN(2:end-1,2:end-1,1:end-2)+Map_NN(2:end-1,2:end-1,3:end  )));
+    
+% Calculate nearest neighbours adjusted - separator voxels are considered as liquid phase here
+
+hand.NN_a=zeros(size(Map_NN_a),'double');
+hand.NN_a(2:end-1,2:end-1,2:end-1)=...
+    hand.c_X*double((Map_NN_a(1:end-2,2:end-1,2:end-1)+Map_NN_a(3:end  ,2:end-1,2:end-1)))+...
+    hand.c_Y*double((Map_NN_a(2:end-1,1:end-2,2:end-1)+Map_NN_a(2:end-1,3:end  ,2:end-1)))+...
+    hand.c_Z*double((Map_NN_a(2:end-1,2:end-1,1:end-2)+Map_NN_a(2:end-1,2:end-1,3:end  )));
+
+% Calculate total nearest neighbours 
+
+hand.NN_tot=zeros(size(Map_t),'double');
+hand.NN_tot(2:end-1,2:end-1,2:end-1)=...
+    hand.c_X*double((Map_t(1:end-2,2:end-1,2:end-1)+Map_t(3:end  ,2:end-1,2:end-1)))+...
+    hand.c_Y*double((Map_t(2:end-1,1:end-2,2:end-1)+Map_t(2:end-1,3:end  ,2:end-1)))+...
+    hand.c_Z*double((Map_t(2:end-1,2:end-1,1:end-2)+Map_t(2:end-1,2:end-1,3:end)));
+
+hand.NN_tot([2 end-1],:,:)=double(Map_t([2 end-1],:,:)).*(hand.NN_tot([2 end-1],:,:)+(hand.c_X));   % adding the double layer between the liquid phase and current collector at both ends
+
+
+if hand.Aniso==0
+    hand.NN=hand.NN/hand.c_X;
+    hand.NN_a=hand.NN_a/hand.c_X;
+    hand.NN_tot=hand.NN_tot/hand.c_X;
+end
+
+[hand]=MBytesRecord(hand,whos,'Preparation2bis NN NN_a and NN_tot'); %Memory
 
 hand.Cheq1.P=zeros([a,b,c],'uint8');
 
@@ -2131,39 +2173,32 @@ end
 %%
 % New method
 
-Map_lpl(1:end/2,:,:) = hand.Map(1:end/2,:,:);  % Left electrode
-Map_lpr(end/2+1:end,:,:) = hand.Map(end/2+1:end,:,:); % Right electrode
+Map_lptop(1:floor(end/2),:,:) = hand.Map(1:floor(end/2),:,:);  % Top electrode
+Map_lpbot(floor(end/2)+1:end,:,:) = hand.Map(floor(end/2)+1:end,:,:); % Bot electrode
+Map_sep(floor(end/2),:,:) =  hand.Map(floor(end/2),:,:); % Separator
 
-Map_sep(end/2,:,:) =  hand.Map(end/2,:,:);  % Left electrode
 
-Lel = find(Map_lpl(:,:,:)==1); % Liquid phase of left electrode
-Ler = find(Map_lpr(:,:,:)==1); % Liquid phase of right electrode
-Sep = find(Map_sep(:,:,:)==1); % Separator
+Let = find(Map_lptop(:,:,:)==1); % Liquid phase of Top electrode
+Leb = find(Map_lpbot(:,:,:)==1); % Liquid phase of Bot electrode
+Sep = find(Map_sep(:,:,:)==1);
 
-[hand.Cheq1.Sep]=(ismember(hand.Cheq1.P,Sep)); 
-[hand.Cheq2.Sep]=(ismember(hand.Cheq2.P,Sep)); 
+[hand.Cheq1.Sep]=(ismember(hand.Cheq1.P,Sep));   % liquid phase voxels within separator (allow to calculate the total ionic current within the cell)
+[hand.Cheq2.Sep]=(ismember(hand.Cheq2.P,Sep));   % liquid phase voxels within separator (allow to calculate the total ionic current within the cell)
 
-[Cheq1_Lel]=(ismember(hand.Cheq1.P,Lel)); 
-[Cheq1_Ler]=(ismember(hand.Cheq1.P,Ler)); 
+[Cheq1_Let]=(ismember(hand.Cheq1.P,Let));  % member of top electrode
+[Cheq1_Leb]=(ismember(hand.Cheq1.P,Leb));  % member of bot electrode
 
-[Cheq2_Lel]=(ismember(hand.Cheq2.P,Lel)); 
-[Cheq2_Ler]=(ismember(hand.Cheq2.P,Ler)); 
+[Cheq2_Let]=(ismember(hand.Cheq2.P,Let)); % member of top electrode
+[Cheq2_Leb]=(ismember(hand.Cheq2.P,Leb)); % member of bot electrode
 
-hand.Cheq1.Pb(Cheq1_Lel) = uint32(length(hand.Cheq2.P)+1);
-hand.Cheq1.Pb(Cheq1_Ler) = uint32(length(hand.Cheq2.P)+2);
+hand.Cheq1.Pb(Cheq1_Let) = uint32(length(hand.Cheq2.P)+1);  % Boundary conditions of solid phase of top electrode 
+hand.Cheq1.Pb(Cheq1_Leb) = uint32(length(hand.Cheq2.P)+2);  % Boundary conditions of solid phase of bot electrode 
 
-hand.Cheq2.Pb(Cheq2_Lel) = uint32(length(hand.Cheq1.P)+1);
-hand.Cheq2.Pb(Cheq2_Ler) = uint32(length(hand.Cheq1.P)+2);
+hand.Cheq2.Pb(Cheq2_Let) = uint32(length(hand.Cheq1.P)+1);   % Boundary conditions of solid phase of top electrode 
+hand.Cheq2.Pb(Cheq2_Leb) = uint32(length(hand.Cheq1.P)+2);   % Boundary conditions of solid phase of bot electrode 
 
-[hand]=MBytesRecord(hand,whos,'Prep2bis Cheq L or R'); %Memory
+[hand]=MBytesRecord(hand,whos,'Prep2bis Cheq Top or Bot'); %Memory
 
-% Top=uint32([1:a+2:(a+2)*(b+2)*(c+2)]);
-% Base=uint32([a+2:a+2:(a+2)*(b+2)*(c+2)]);
-% 
-% [LIA2t]=ismember(hand.Cheq2.P_Xm,Top);
-% [LIA2b]=ismember(hand.Cheq2.P_Xp,Base);
-% hand.T2Top=uint32(find(LIA2t));
-% hand.T2Bot=uint32(find(LIA2b));
 
 [~,hand.Cheq2.P_Xm]=(ismember(hand.Cheq2.P_Xm,hand.Cheq1.P));
 hand.Cheq2.P_Xm=uint32(hand.Cheq2.P_Xm);
@@ -2185,12 +2220,7 @@ if c>1
     hand.Cheq2.P_Zp=uint32(hand.Cheq2.P_Zp);
     hand.Cheq2.P_Zp(hand.Cheq2.P_Zp==0)=length(hand.Cheq1.P)+1;
 end
-% hand.Cheq2.P_Xp(LIA2b)=uint32(length(hand.Cheq1.P)+2);
 
-% [LIA1t]=ismember(hand.Cheq1.P_Xm,Top);
-% [LIA1b]=ismember(hand.Cheq1.P_Xp,Base);
-% hand.T1Top=uint32(find(LIA1t));
-% hand.T1Bot=uint32(find(LIA1b));
 [~,hand.Cheq1.P_Xm]=(ismember(hand.Cheq1.P_Xm,hand.Cheq2.P));
 hand.Cheq1.P_Xm=uint32(hand.Cheq1.P_Xm);
 hand.Cheq1.P_Xm(hand.Cheq1.P_Xm==0)=uint32(length(hand.Cheq2.P)+1);
@@ -2211,7 +2241,6 @@ if c>1
     hand.Cheq1.P_Zp=uint32(hand.Cheq1.P_Zp);
     hand.Cheq1.P_Zp(hand.Cheq1.P_Zp==0)=length(hand.Cheq2.P)+1;
 end
-% hand.Cheq1.P_Xp(LIA1b)=uint32(length(hand.Cheq2.P)+2);
  
 
 
@@ -2305,7 +2334,7 @@ T=single(hand.Map);
 
 % Boundary conditions 
 hand.TopStim=0;  % Potential of top electrode (as Ref)
-hand.BotStim=1/2;   % Potential of bottom electrode 
+hand.BotStim=1;   % Potential of bottom electrode 
 
 if hand.TopStim==hand.BotStim || hand.Blocked==1 || sum(sum(hand.Map(2,2:end-1,2:end-1)))==0
     T=single(hand.Map*hand.BotStim);
@@ -2319,8 +2348,8 @@ hand.T1=double(T(hand.Cheq1.P));
 hand.T2=double(T(hand.Cheq2.P));
 
 if get(hand.Check_VaryD,'value')==0
-    hand.T1(end+2)=hand.BotStim;
-    hand.T2(end+2)=hand.BotStim;
+    hand.T1(end+2)=2*hand.BotStim;
+    hand.T2(end+2)=2*hand.BotStim;
 else
     hand.T1(end+2)=hand.BotStim;
     hand.T2(end+2)=hand.BotStim;
@@ -2384,14 +2413,11 @@ hand.NN_aV.w2=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
 
 [hand]=MBytesRecord(hand,whos,'Prep3Imp'); %Memory
 
+
+
 function [hand]=Preparation3imp_sym(hand)
 %% Alternative third preparation step if impedance is called
-% hand.TopStim=0;
-% hand.BotStim=1;
-% T=complex(hand.Tconv);
-% hand.Tconv=1;
-% T(1,2:end-1,2:end-1)=2*hand.TopStim;
-% T(end,2:end-1,2:end-1)=2*hand.BotStim;
+
 hand.Tconv=complex((hand.Tconv));
 hand.T1=double(hand.Tconv(hand.Cheq1.P));
 hand.T2=double(hand.Tconv(hand.Cheq2.P));
@@ -2408,8 +2434,6 @@ if hand.InLineMode==0
         [hand]=InitiatePlot2(hand,(hand.Tconv),hand.Map);
     end
 end
-% hand.Area_top=complex(sum(sum(hand.Map(2,:,:))));
-% hand.Area_bot=complex(sum(sum(hand.Map(end-1,:,:))));
 
 hand.w=complex(2-(pi)/max(size(hand.Map)*1.3));
 if hand.y(hand.freqNo)>0.5
@@ -2419,14 +2443,14 @@ end
 if hand.Aniso==1
     hand.w=0.95*hand.w;
 end
-hand.w = complex(0.85);
+hand.w = complex(0.85);   % fix omega
 hand.omw=complex(1-hand.w);
 
-hand.NN_aV.sp1 = complex((complex(double(hand.NN_tot(hand.Cheq1.P))-double(hand.NN_a(hand.Cheq1.P)))*1i*2*pi*hand.freq*hand.Cdl*hand.delta_x^2)/hand.kappa) ;
-hand.NN_aV.sp2 = complex((complex(double(hand.NN_tot(hand.Cheq2.P))-double(hand.NN_a(hand.Cheq2.P)))*1i*2*pi*hand.freq*hand.Cdl*hand.delta_x^2)/hand.kappa) ;
+hand.NN_aV.sp1 = complex((complex(double(hand.NN_tot(hand.Cheq1.P))-double(hand.NN_a(hand.Cheq1.P)))*1i*2*pi*hand.freq*hand.C_dl*hand.delta_x^2)/hand.kappa) ;
+hand.NN_aV.sp2 = complex((complex(double(hand.NN_tot(hand.Cheq2.P))-double(hand.NN_a(hand.Cheq2.P)))*1i*2*pi*hand.freq*hand.C_dl*hand.delta_x^2)/hand.kappa) ;
 
-hand.NN_aV.w1=complex(hand.w./ (complex(double(hand.NN_aV.sp1)+complex(double(hand.NN_a(hand.Cheq1.P))))));
-hand.NN_aV.w2=complex(hand.w./ (complex(double(hand.NN_aV.sp2)+complex(double(hand.NN_a(hand.Cheq2.P))))));
+hand.NN_aV.w1=complex(hand.w./ (complex(double(hand.NN_aV.sp1)+complex(double(hand.NN(hand.Cheq1.P))))));
+hand.NN_aV.w2=complex(hand.w./ (complex(double(hand.NN_aV.sp2)+complex(double(hand.NN(hand.Cheq2.P))))));
 
 [hand]=MBytesRecord(hand,whos,'Prep3Imp_SymCell'); %Memory
 
@@ -3014,7 +3038,7 @@ else % Impedance mode
             end
         end
         %%%%%%     if unstable
-        %         hand.w=hand.w*0.99;
+        %    hand.T1(hand.Cheq1.Sep)     hand.w=hand.w*0.99;
         %         hand.omw=complex(1-hand.w);
         %
         %         hand.NN_aV.w1=complex(hand.w./ (complex((1i*hand.freq*hand.delta_x^2)/...
@@ -3029,7 +3053,7 @@ else % Impedance mode
         if checkNo<6
             hand.whileFlag=hand.conDwell-1;
         else
-            hand.conTol=0.01;
+            hand.conTol=0.001;
             if      abs(real(hand.ImpedanceBot(hand.freqNo,checkNo))/real(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)<hand.conTol &&...
                     abs(imag(hand.ImpedanceBot(hand.freqNo,checkNo))/imag(hand.ImpedanceBot(hand.freqNo,checkNo-5))-1)<hand.conTol% &&...
                 hand.ImpedanceBotConv(hand.freqNo)=hand.ImpedanceBot(hand.freqNo,checkNo);
@@ -3235,7 +3259,19 @@ else
             A=flip(permute(hand.Net_Or,[3 1 2]),3);
     end
     A=A(hand.RVAdims(1,1):hand.RVAdims(1,2),hand.RVAdims(2,1):hand.RVAdims(2,2),hand.RVAdims(3,1));
+%     hand.Net_Ag=hand.Net_Ag(hand.RVAdims(1,1):hand.RVAdims(1,2),hand.RVAdims(2,1):hand.RVAdims(2,2),hand.RVAdims(3,1));
+%     [a,b,c]=size(hand.Net_Cu);
+%     hand.RVAdims=[...
+%         1,a;...
+%         1,b;...
+%         1,c];
+%     hand.Net_Cu=hand.Net_Cu(hand.RVAdims(1,1):hand.RVAdims(1,2),hand.RVAdims(2,1):hand.RVAdims(2,2),hand.RVAdims(3,1));
+%     figure
     imagesc(A)
+%     figure
+%     imagesc(hand.Net_Ag)
+%     figure
+%     imagesc(hand.Net_Cu)
 end
 colormap(hand.myColorMap)
 freezeColors;
@@ -3622,7 +3658,7 @@ if hand.freqNo==1
         'FitBoxToText','off');
     hand.ImpPlot.Spectrum=plot(real(hand.ImpedanceBotConv*normFactor),-imag(hand.ImpedanceBotConv*normFactor),'-x','linewidth',1.5);
     hand.ImpPlot.Axes=gca;    
-    if get(hand.Check_TauMode, 'Value')~=3   
+    if get(hand.Check_TauMode, 'Value')~=3  
         
         if hand.PercFlag==1 && hand.Blocked==0
             hold on; plot(hand.Tau/hand.VolFrac,0,'r*','markersize',7);hold off
@@ -3660,16 +3696,16 @@ if hand.freqNo==1
             'LineWidth',1.2,...
             'FontSize',16)
     else
-        lim=max(real(hand.ImpedanceBotConv*normFactor))*20;       
+        lim=max(real(hand.ImpedanceBotConv*normFactor))*40;       
 %         hold on; hand.ImpPlot.wc=plot(-1,-1,'or','markersize',7);hold off;
         
-        xlim([0 lim]);
-        ylim([0 lim]);
+%         xlim([0 lim]);
+%         ylim([0 lim]);
         legend('Impedance')        
         set(legend,'Interpreter','latex');
         hold on; plot([real(hand.ImpedanceBotConv(1)*normFactor),lim],[-imag(hand.ImpedanceBotConv(1)*normFactor),lim],':k','linewidth',1.5);hold off
         set(hand.ImpPlot.Axes,'TickLabelInterpreter','latex')
-        axis(hand.ImpPlot.Axes,'square');
+        axis(hand.ImpPlot.Axes,'equal');
         xlabel('$\tilde{Z}''$','Interpreter','Latex');
         ylabel('-$\tilde{Z}''''$','Interpreter','Latex');
         title('Normalised Impedance','Interpreter','Latex')
